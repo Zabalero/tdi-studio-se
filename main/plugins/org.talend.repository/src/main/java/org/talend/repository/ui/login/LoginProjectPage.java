@@ -20,14 +20,17 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
 import org.eclipse.core.runtime.IProgressMonitor;
 import org.eclipse.core.runtime.IStatus;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Platform;
+import org.eclipse.core.runtime.Status;
 import org.eclipse.core.runtime.jobs.IJobChangeEvent;
 import org.eclipse.core.runtime.jobs.IJobChangeListener;
 import org.eclipse.core.runtime.jobs.Job;
@@ -59,6 +62,7 @@ import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.graphics.GC;
 import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.graphics.Point;
+import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.FormAttachment;
 import org.eclipse.swt.layout.FormData;
 import org.eclipse.swt.layout.FormLayout;
@@ -68,6 +72,7 @@ import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Text;
@@ -114,9 +119,9 @@ import org.talend.repository.ProjectManager;
 import org.talend.repository.i18n.Messages;
 import org.talend.repository.model.IProxyRepositoryFactory;
 import org.talend.repository.model.RepositoryConstants;
+import org.talend.repository.ui.ERepositoryImages;
 import org.talend.repository.ui.actions.importproject.ImportDemoProjectAction;
 import org.talend.repository.ui.actions.importproject.ImportProjectAsAction;
-import org.talend.repository.ui.dialog.OverTimePopupDialogTask;
 import org.talend.repository.ui.login.connections.ConnectionUserPerReader;
 import org.talend.repository.ui.login.connections.ConnectionsDialog;
 import org.talend.repository.ui.login.sandboxProject.CreateSandboxProjectDialog;
@@ -195,6 +200,16 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
     protected Job backgroundGUIUpdate;
 
+    protected Job backgroundSandboxChecker;
+
+    protected Job backgroundUpdateChecker;
+
+    protected Job backgroundRetrieveProjectsJob;
+
+    protected Job backgroundRefreshJob;
+
+    protected Job backgroundLoadUIJob;
+
     private IJobChangeListener guiUpdateJobChangeListener;
 
     private String selectedProjectBeforeRefresh;
@@ -204,6 +219,8 @@ public class LoginProjectPage extends AbstractLoginActionPage {
     protected String finishButtonAction;
 
     protected boolean afterUpdate = false;
+
+    protected boolean hasUpdate = false;
 
     protected IBrandingService brandingService = (IBrandingService) GlobalServiceRegister.getDefault().getService(
             IBrandingService.class);
@@ -215,6 +232,10 @@ public class LoginProjectPage extends AbstractLoginActionPage {
     private Map<String, Boolean> forceRefreshProjectBranchMap = Collections.synchronizedMap(new HashMap<>());
 
     private boolean disableBranchRefresh = false;
+
+    private Composite backgroundTaskPanel;
+
+    private Label backgroundTaskIcon;
 
     public LoginProjectPage(Composite parent, LoginDialogV2 dialog, int style) {
         super(parent, dialog, style);
@@ -232,6 +253,234 @@ public class LoginProjectPage extends AbstractLoginActionPage {
         finishButtonAction = FINISH_ACTION_OPEN_PROJECT;
         loginHelper = LoginHelper.getInstance();
         loginFetchLicenseHelper = LoginFetchLicenseHelper.getInstance();
+    }
+
+    private void scheduleCheckSandboxJob() {
+        if (backgroundSandboxChecker != null) {
+            backgroundSandboxChecker.cancel();
+            Optional.ofNullable(backgroundSandboxChecker.getThread()).ifPresent(t -> t.interrupt());
+        }
+        backgroundSandboxChecker = createCheckSandboxJob();
+        backgroundSandboxChecker.schedule();
+    }
+
+    private Job createCheckSandboxJob() {
+        return new Job("Updating sandbox visiablity...") {
+
+            @Override
+            protected IStatus run(IProgressMonitor monitor) {
+                boolean needSandbox = isNeedSandboxProject();
+                if (monitor.isCanceled()) {
+                    return Status.CANCEL_STATUS;
+                }
+                if (isDisposed()) {
+                    return Status.OK_STATUS;
+                }
+                Display.getDefault().syncExec(() -> {
+                    if (monitor.isCanceled()) {
+                        return;
+                    }
+                    if (isDisposed()) {
+                        return;
+                    }
+                    refreshCreateSandboxProjectVisible(needSandbox, true);
+                });
+                return Status.OK_STATUS;
+            }
+        };
+    }
+
+    private void scheduleRefreshJob() {
+        if (this.backgroundRefreshJob != null) {
+            this.backgroundRefreshJob.cancel();
+            Optional.ofNullable(backgroundRefreshJob.getThread()).ifPresent(t -> t.interrupt());
+        }
+        this.backgroundRefreshJob = createRefreshJob();
+        this.backgroundRefreshJob.schedule();
+    }
+
+    private Job createRefreshJob() {
+        return new Job("Refresh projects") {
+
+            @Override
+            protected IStatus run(IProgressMonitor monitor) {
+                // reset flag to connect again
+                errorManager.setAuthException(null);
+                errorManager.setHasAuthException(false);
+
+                loginFetchLicenseHelper.cancelAndClearFetchJobs();
+                LoginProjectPage.this.selectedProjectBeforeRefresh = getProject() == null ? null : getProject().getLabel();
+                if (monitor.isCanceled() || isDisposed()) {
+                    return Status.CANCEL_STATUS;
+                }
+                // Validate data
+                if (validateFields()) {
+                    if (monitor.isCanceled() || isDisposed()) {
+                        return Status.CANCEL_STATUS;
+                    }
+                    fillUIProjectList(monitor);
+                }
+                try {
+                    checkErrors();
+                    if (monitor.isCanceled() || isDisposed()) {
+                        return Status.CANCEL_STATUS;
+                    }
+                    scheduleUpdateCheckerJob();
+                } catch (Exception e1) {
+                    CommonExceptionHandler.process(e1);
+                }
+                if (monitor.isCanceled() || isDisposed()) {
+                    return Status.CANCEL_STATUS;
+                }
+                setRepositoryContextInContext();
+                LoginProjectPage.this.selectedProjectBeforeRefresh = null;
+                if (errorManager.isHasAuthException()) {
+                    if (monitor.isCanceled() || isDisposed()) {
+                        return Status.CANCEL_STATUS;
+                    }
+                    Display.getDefault().syncExec(() -> {
+                        if (monitor.isCanceled() || isDisposed()) {
+                            return;
+                        }
+                        handleOpenConnectionsDialog(true);
+                    });
+                }
+                return Status.OK_STATUS;
+            }
+
+        };
+    }
+
+    private void scheduleRetrieveProjectsJob() {
+        if (this.backgroundRetrieveProjectsJob != null) {
+            this.backgroundRetrieveProjectsJob.cancel();
+            Optional.ofNullable(backgroundRetrieveProjectsJob.getThread()).ifPresent(t -> t.interrupt());
+        }
+        this.backgroundRetrieveProjectsJob = createRetrieveProjectsJob();
+        this.backgroundRetrieveProjectsJob.schedule();
+    }
+
+    private Job createRetrieveProjectsJob() {
+        return new Job("Retrieve projects") {
+
+            @Override
+            protected IStatus run(IProgressMonitor monitor) {
+                try {
+                    if (monitor.isCanceled() || isDisposed()) {
+                        return Status.CANCEL_STATUS;
+                    }
+                    if (validateFields()) {
+                        if (monitor.isCanceled() || isDisposed()) {
+                            return Status.CANCEL_STATUS;
+                        }
+                        fillUIProjectList(monitor);
+                    }
+                    checkErrors();
+                    if (errorManager.isHasAuthException()) {
+                        if (monitor.isCanceled() || isDisposed()) {
+                            return Status.CANCEL_STATUS;
+                        }
+                        Display.getDefault().syncExec(() -> handleOpenConnectionsDialog(true));
+                    }
+                } catch (Exception e) {
+                    CommonExceptionHandler.process(e);
+                } finally {
+                    TalendProxySelector.checkProxy();
+                }
+                return Status.OK_STATUS;
+            }
+
+        };
+    }
+
+    private void scheduleUpdateCheckerJob() {
+        if (this.backgroundUpdateChecker != null) {
+            this.backgroundUpdateChecker.cancel();
+            Optional.ofNullable(backgroundUpdateChecker.getThread()).ifPresent(t -> t.interrupt());
+        }
+        this.backgroundUpdateChecker = createUpdateCheckerJob();
+        this.backgroundUpdateChecker.schedule();
+    }
+
+    private Job createUpdateCheckerJob() {
+        return new Job("Check for update...") {
+
+            private Job iconDisplayJob;
+
+            @Override
+            protected IStatus run(IProgressMonitor monitor) {
+                iconDisplayJob = new Job("Icon display") {
+
+                    @Override
+                    protected IStatus run(IProgressMonitor monitor) {
+                        try {
+                            final AtomicBoolean show = new AtomicBoolean(true);
+                            while (true) {
+                                if (monitor.isCanceled() || isDisposed()) {
+                                    break;
+                                }
+                                Display.getDefault().syncExec(() -> {
+                                    if (monitor.isCanceled() || isDisposed()) {
+                                        return;
+                                    }
+//                                    backgroundTaskPanel.setVisible(show.get());
+                                    backgroundTaskIcon.setVisible(show.get());
+                                    backgroundTaskIcon
+                                            .setToolTipText(Messages.getString("LoginProjectPage.progress.checkUpdate"));
+                                    backgroundTaskPanel
+                                            .setToolTipText(Messages.getString("LoginProjectPage.progress.checkUpdate"));
+                                });
+                                boolean curShow = show.get();
+                                if (curShow) {
+                                    Thread.sleep(1000);
+                                } else {
+                                    Thread.sleep(1000);
+                                }
+                                show.set(!curShow);
+                            }
+                        } catch (Exception e) {
+                            // ignore
+                        }
+                        Display.getDefault().syncExec(() -> {
+                            if (isDisposed()) {
+                                return;
+                            }
+                            backgroundTaskIcon.setVisible(false);
+                            backgroundTaskIcon.setToolTipText(null);
+                            backgroundTaskPanel.setToolTipText(null);
+                        });
+                        return Status.OK_STATUS;
+                    }
+
+                };
+                try {
+                    iconDisplayJob.schedule();
+                    try {
+                        validateUpdate(monitor);
+                    } catch (Exception e) {
+                        ExceptionHandler.process(e);
+                    }
+                    if (monitor.isCanceled()) {
+                        return Status.CANCEL_STATUS;
+                    } else {
+                        return Status.OK_STATUS;
+                    }
+                } finally {
+                    iconDisplayJob.cancel();
+                    Optional.ofNullable(iconDisplayJob.getThread()).ifPresent(t -> t.interrupt());
+                }
+            }
+
+            @Override
+            protected void canceling() {
+                if (iconDisplayJob != null) {
+                    iconDisplayJob.cancel();
+                    Optional.ofNullable(iconDisplayJob.getThread()).ifPresent(t -> t.interrupt());
+                }
+                super.canceling();
+            }
+
+        };
     }
 
     @Override
@@ -324,6 +573,13 @@ public class LoginProjectPage extends AbstractLoginActionPage {
         executeCreateSandBoxProject.setBackground(backgroundBtnColor);
 
         super.instantiateControl(container);
+
+        backgroundTaskPanel = new Composite(navigateArea, SWT.NONE);
+        backgroundTaskIcon = new Label(backgroundTaskPanel, SWT.NONE);
+        Image progressImage = ImageProvider.getImage(ERepositoryImages.BACKGROUND_TASK_ICON);
+        backgroundTaskIcon.setImage(progressImage);
+        backgroundTaskIcon.setCursor(Display.getDefault().getSystemCursor(SWT.CURSOR_APPSTARTING));
+        backgroundTaskIcon.setVisible(false);
     }
 
     @Override
@@ -459,6 +715,18 @@ public class LoginProjectPage extends AbstractLoginActionPage {
         layoutProjectListArea();
     }
 
+    @Override
+    protected void layoutNavigatorArea() {
+        super.layoutNavigatorArea();
+        FormData formData = new FormData();
+        formData.top = new FormAttachment(finishButton, 0, SWT.TOP);
+        formData.bottom = new FormAttachment(finishButton, 0, SWT.BOTTOM);
+        formData.right = new FormAttachment(finishButton, -1 * TAB_HORIZONTAL_PADDING_LEVEL_2, SWT.LEFT);
+        formData.width = LoginDialogV2.getNewButtonSize(previousButton).y;
+        backgroundTaskPanel.setLayoutData(formData);
+        backgroundTaskPanel.setLayout(new FillLayout());
+    }
+
     protected void layoutProjectListArea() {
         projectListArea.setLayout(new FormLayout());
         FormData formData = null;
@@ -512,21 +780,13 @@ public class LoginProjectPage extends AbstractLoginActionPage {
     private boolean isNeedSandboxProject;
 
     protected boolean isNeedSandboxProject() {
-        isNeedSandboxProject = LoginHelper.isRemotesConnection(getConnection());
-        if (isNeedSandboxProject) {
-            BusyIndicator.showWhile(getDisplay(), new Runnable() {
-
-                @Override
-                public void run() {
-                    try {
-                        isNeedSandboxProject = ProxyRepositoryFactory.getInstance().enableSandboxProject();
-                    } catch (Exception e) {
-                        CommonExceptionHandler.process(e);
-                    }
-                }
-            });
-        } else {
-            return false;
+        isNeedSandboxProject = false;
+        if (LoginHelper.isRemotesConnection(getConnection())) {
+            try {
+                isNeedSandboxProject = ProxyRepositoryFactory.getInstance().enableSandboxProject();
+            } catch (Exception e) {
+                CommonExceptionHandler.process(e);
+            }
         }
         return isNeedSandboxProject;
     }
@@ -538,21 +798,17 @@ public class LoginProjectPage extends AbstractLoginActionPage {
         previousButton.setVisible(false);
     }
 
-    protected void fillUIContentsWithBusyCursor() {
-        BusyIndicator.showWhile(getDisplay(), new Runnable() {
-
-            @Override
-            public void run() {
-                fillUIContents();
-            }
-        });
-    }
-
-    protected void fillUIContents() {
+    protected void fillConnectionsList(IProgressMonitor monitor) {
         boolean isOnlyRemoteConnection = brandingService.getBrandingConfiguration().isOnlyRemoteConnection();
         List<ConnectionBean> storedConnections = loginHelper.getStoredConnections();
         storedConnections = loginHelper.filterUsableConnections(storedConnections);
+        if (monitor.isCanceled() || isDisposed()) {
+            return;
+        }
         for (ConnectionBean connectionBean : storedConnections) {
+            if (monitor.isCanceled() || isDisposed()) {
+                return;
+            }
             String user2 = connectionBean.getUser();
             String repositoryId2 = connectionBean.getRepositoryId();
             String workSpace = connectionBean.getWorkSpace();
@@ -569,15 +825,22 @@ public class LoginProjectPage extends AbstractLoginActionPage {
                 connectionBean.setComplete(valid);
             }
         }
-        if (!isOnlyRemoteConnection) {
-            connectionsViewer.setInput(storedConnections);
-        } else {
+        if (monitor.isCanceled() || isDisposed()) {
+            return;
+        }
+        if (isOnlyRemoteConnection) {
             // feature 8,hide error remote connection for Uniserv after their login validate
             List<ILoginConnectionService> loginConnectionServices = LoginConnectionManager.getRemoteConnectionService();
             List<ConnectionBean> lastRemoteConnections = new ArrayList<ConnectionBean>();
             if (loginConnectionServices.size() > 0) {
                 for (ILoginConnectionService loginConncetion : loginConnectionServices) {
+                    if (monitor.isCanceled() || isDisposed()) {
+                        return;
+                    }
                     for (ConnectionBean iBean : storedConnections) {
+                        if (monitor.isCanceled() || isDisposed()) {
+                            return;
+                        }
                         String errorMsg = loginConncetion.checkConnectionValidation(iBean.getName(), iBean.getDescription(),
                                 iBean.getUser(), iBean.getPassword(), iBean.getWorkSpace(),
                                 iBean.getDynamicFields().get(RepositoryConstants.REPOSITORY_URL));
@@ -590,71 +853,89 @@ public class LoginProjectPage extends AbstractLoginActionPage {
             if (lastRemoteConnections.size() > 0) {
                 storedConnections = lastRemoteConnections;
             }
-            connectionsViewer.setInput(storedConnections);
         }
-
-        // Check number of connection available.
-        if (storedConnections.size() == 0) {
-            //
-        } else if (storedConnections.size() == 1) {
-            connectionsViewer.setSelection(new StructuredSelection(new Object[] { storedConnections.get(0) }));
-        } else {
-            // select last connection used
-            boolean selected = false;
-            // for (ConnectionBean curent : storedConnections) {
-            // String stringValue = ((LabelProvider) connectionsViewer.getLabelProvider()).getText(curent);
-            // if (curent.getName().equals( lastConnection)) {
-            // selectLast(stringValue, connectionsViewer.getCombo());
-            // selected = true;
-            // }
-            // }
-            ConnectionBean selectedConnBean = loginHelper.getCurrentSelectedConnBean();
-            if (selectedConnBean != null) {
-                connectionsViewer.setSelection(new StructuredSelection(new Object[] { selectedConnBean }));
-                IStructuredSelection sel = (IStructuredSelection) connectionsViewer.getSelection();
-                if (selectedConnBean.equals(sel.getFirstElement())) {
-                    selected = true;
+        final List<ConnectionBean> finalStoredConnections = storedConnections;
+        if (monitor.isCanceled() || isDisposed()) {
+            return;
+        }
+        Display.getDefault().syncExec(() -> {
+            if (monitor.isCanceled() || isDisposed()) {
+                return;
+            }
+            connectionsViewer.setInput(finalStoredConnections);
+            // Check number of connection available.
+            if (finalStoredConnections.size() == 0) {
+                //
+            } else if (finalStoredConnections.size() == 1) {
+                connectionsViewer.setSelection(new StructuredSelection(new Object[] { finalStoredConnections.get(0) }));
+            } else {
+                // select last connection used
+                boolean selected = false;
+                // for (ConnectionBean curent : storedConnections) {
+                // String stringValue = ((LabelProvider) connectionsViewer.getLabelProvider()).getText(curent);
+                // if (curent.getName().equals( lastConnection)) {
+                // selectLast(stringValue, connectionsViewer.getCombo());
+                // selected = true;
+                // }
+                // }
+                ConnectionBean selectedConnBean = loginHelper.getCurrentSelectedConnBean();
+                if (selectedConnBean != null) {
+                    connectionsViewer.setSelection(new StructuredSelection(new Object[] { selectedConnBean }));
+                    IStructuredSelection sel = (IStructuredSelection) connectionsViewer.getSelection();
+                    if (selectedConnBean.equals(sel.getFirstElement())) {
+                        selected = true;
+                    }
+                }
+                if (!selected) {
+                    connectionsViewer.setSelection(new StructuredSelection(new Object[] { finalStoredConnections.get(0) }));
                 }
             }
-            if (!selected) {
-                connectionsViewer.setSelection(new StructuredSelection(new Object[] { storedConnections.get(0) }));
-            }
-        }
-        ConnectionBean selectedConnBean = getConnection();
-        if (selectedConnBean != null) {
-            loginHelper.setCurrentSelectedConnBean(selectedConnBean);
-        }
+        });
 
-        if (getConnection() != null || !validateFields()) {
-            setRepositoryContextInContext();
+        if (monitor.isCanceled() || isDisposed()) {
+            return;
         }
-
-        fillUIProjectListWithBusyCursor();
-
         refreshNecessaryVisible();
+    }
+
+    private void scheduleLoadUiJob() {
+        if (this.backgroundLoadUIJob != null) {
+            this.backgroundLoadUIJob.cancel();
+            Optional.ofNullable(backgroundLoadUIJob.getThread()).ifPresent(t -> t.interrupt());
+        }
+        this.backgroundLoadUIJob = createLoadUiJob();
+        this.backgroundLoadUIJob.schedule();
+    }
+
+    private Job createLoadUiJob() {
+        return new Job("Load UI job") {
+
+            @Override
+            protected IStatus run(IProgressMonitor monitor) {
+                fillConnectionsList(monitor);
+                onConnectionSelected(monitor, true);
+                if (monitor.isCanceled()) {
+                    return Status.CANCEL_STATUS;
+                } else {
+                    return Status.OK_STATUS;
+                }
+            }
+        };
     }
 
     @Override
     public void refreshUIData() {
-        fillUIContentsWithBusyCursor();
+        scheduleLoadUiJob();
+    }
+
+    @Override
+    public boolean isNeedCheck() {
+        return false;
     }
 
     @Override
     public void check() {
-        try {
-            checkErrors();
-            log.info("validate updatesite..."); //$NON-NLS-1$
-            validateUpdate();
-            if (SharedStudioUtils.isSharedStudioMode()) {
-                validatePatchForSharedMode();
-            }
-        } catch (PersistenceException e) {
-            CommonExceptionHandler.process(e);
-            log.error(e);
-        } catch (JSONException e) {
-            CommonExceptionHandler.process(e);
-            log.error(e);
-        }
+        // nothing to do
     }
 
     @Override
@@ -665,47 +946,7 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
             @Override
             public void selectionChanged(SelectionChangedEvent event) {
-                try {
-                    resetProjectOperationSelectionWithBusyCursor(false);
-                    final ConnectionBean connection = getConnection();
-                    if (connection == null) {
-                        checkErrors();
-                        return;
-                    }
-                    // if (beforeConnBean != null && connection.equals(beforeConnBean)) {
-                    // return;
-                    // }
-                    if (connection.equals(loginHelper.getCurrentSelectedConnBean())) {
-                        // in case they are equal but different object id
-                        loginHelper.setCurrentSelectedConnBean(connection);
-                        return;
-                    } else {
-                        loginHelper.setCurrentSelectedConnBean(connection);
-                    }
-                    currentProjectSettings = null;
-                    forceRefreshProjectBranchMap.clear();
-                    loginFetchLicenseHelper.cancelAndClearFetchJobs();
-                    errorManager.clearAllMessages();
-                    // beforeConnBean = connection;
-                    updateServerFields();
-
-                    // Validate data
-                    if (validateFields()) {
-                        fillUIProjectListWithBusyCursor();
-                        validateProject();
-                    }
-                    checkErrors();
-                    validateUpdate();
-                    if (errorManager.isHasAuthException()) {
-                        handleOpenConnectionsDialog(true);
-                    }
-                } catch (PersistenceException e) {
-                    CommonExceptionHandler.process(e);
-                } catch (JSONException e) {
-                    CommonExceptionHandler.process(e);
-                } finally {
-                    TalendProxySelector.checkProxy();
-                }
+                onConnectionSelected(new NullProgressMonitor(), false);
             }
 
         });
@@ -720,7 +961,7 @@ public class LoginProjectPage extends AbstractLoginActionPage {
                     // changeFinishButtonAction(finishButtonAction);
                     try {
                         checkErrors();
-                    } catch (PersistenceException e1) {
+                    } catch (Exception e1) {
                         CommonExceptionHandler.process(e1);
                     }
                 } else {
@@ -899,30 +1140,7 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
             @Override
             public void widgetSelected(SelectionEvent e) {
-                // reset flag to connect again
-                errorManager.setAuthException(null);
-                errorManager.setHasAuthException(false);
-
-                loginFetchLicenseHelper.cancelAndClearFetchJobs();
-                LoginProjectPage.this.selectedProjectBeforeRefresh = getProject() == null ? null : getProject().getLabel();
-                // Validate data
-                if (validateFields()) {
-                    fillUIProjectListWithBusyCursor();
-                    validateProject();
-                }
-                try {
-                    checkErrors();
-                    validateUpdate();
-                } catch (PersistenceException e1) {
-                    CommonExceptionHandler.process(e1);
-                } catch (JSONException e1) {
-                    CommonExceptionHandler.process(e1);
-                }
-                setRepositoryContextInContext();
-                LoginProjectPage.this.selectedProjectBeforeRefresh = null;
-                if (errorManager.isHasAuthException()) {
-                    handleOpenConnectionsDialog(true);
-                }
+                onRefresh();
             }
         });
 
@@ -1057,8 +1275,9 @@ public class LoginProjectPage extends AbstractLoginActionPage {
                     return;
                 }
             }
+            final boolean hasAuthException = errorManager.isHasAuthException();
             ConnectionsDialog connectionsDialog = new ConnectionsDialog(getShell(), getConnection(),
-                    errorManager.isHasAuthException());
+                    hasAuthException);
             int open = connectionsDialog.open();
             if (open == Window.OK) {
                 List<ConnectionBean> storedConnections = connectionsDialog.getConnections();
@@ -1067,36 +1286,12 @@ public class LoginProjectPage extends AbstractLoginActionPage {
                 // reset flag to connect again
                 errorManager.setAuthException(null);
                 errorManager.setHasAuthException(false);
-                fillUIContentsWithBusyCursor();
-                final ConnectionBean connection = getConnection();
-                if (connection == null) {
-                    checkErrors();
-                    return;
-                }
-                // beforeConnBean = connection;
-
-                updateServerFields();
-
-                // Validate data
-                if (validateFields()) {
-                    fillUIProjectListWithBusyCursor();
-                    validateProject();
-                }
-                checkErrors();
-                validateUpdate();
-                if (errorManager.isHasAuthException()) {
-                    handleOpenConnectionsDialog(true);
-                }
-            } else if (!LoginHelper.isRemotesConnection(getConnection())) {
-                fillUIProjectListWithBusyCursor();
-                validateProject();
-                checkErrors();
+                fillConnectionsList(new NullProgressMonitor());
+                onConnectionSelected(new NullProgressMonitor(), hasAuthException);
             }
             // setStatusArea();
-        } catch (PersistenceException e1) {
+        } catch (Exception e1) {
             CommonExceptionHandler.process(e1);
-        } catch (JSONException e2) {
-            CommonExceptionHandler.process(e2);
         }
     }
 
@@ -1213,46 +1408,66 @@ public class LoginProjectPage extends AbstractLoginActionPage {
     }
 
     protected void resetProjectOperationSelectionWithBusyCursor(final boolean needCheckError) {
-        BusyIndicator.showWhile(getDisplay(), new Runnable() {
+        resetProjectOperationSelection(needCheckError);
+    }
 
-            @Override
-            public void run() {
-                resetProjectOperationSelection(needCheckError);
+    protected void resetProjectOperationSelection(final boolean needCheckError) {
+        hasUpdate = false;
+        isNeedSandboxProject = false;
+        Display.getDefault().syncExec(() -> {
+            backgroundTaskIcon.setVisible(false);
+            selectExistingProject.setSelection(true);
+            finishButtonAction = FINISH_ACTION_OPEN_PROJECT;
+            refreshProjectListAreaEnable(selectExistingProject.isEnabled());
+            importDemoProject.setSelection(false);
+            executeImportDemoProject.setVisible(false);
+            importLocalProject.setSelection(false);
+            executeImportLocalProject.setVisible(false);
+            createSandBoxProject.setSelection(false);
+            executeCreateSandBoxProject.setVisible(false);
+            createNewProject.setSelection(false);
+            createNewProject.setText(Messages.getString("LoginProjectPage.createNewProject")); //$NON-NLS-1$
+            newProjectName.setVisible(false);
+            executeCreateNewProject.setVisible(false);
+            if (needCheckError) {
+                try {
+                    checkErrors();
+                } catch (Exception e) {
+                    CommonExceptionHandler.process(e);
+                }
+            } else {
+                changeFinishButtonAction();
+                finishButton.getShell().setDefaultButton(finishButton);
             }
         });
     }
 
-    protected void resetProjectOperationSelection(final boolean needCheckError) {
-        selectExistingProject.setSelection(true);
-        finishButtonAction = FINISH_ACTION_OPEN_PROJECT;
-        refreshProjectListAreaEnable(selectExistingProject.isEnabled());
-        importDemoProject.setSelection(false);
-        executeImportDemoProject.setVisible(false);
-        importLocalProject.setSelection(false);
-        executeImportLocalProject.setVisible(false);
-        createSandBoxProject.setSelection(false);
-        executeCreateSandBoxProject.setVisible(false);
-        createNewProject.setSelection(false);
-        createNewProject.setText(Messages.getString("LoginProjectPage.createNewProject")); //$NON-NLS-1$
-        newProjectName.setVisible(false);
-        executeCreateNewProject.setVisible(false);
-        if (needCheckError) {
-            try {
-                checkErrors();
-            } catch (PersistenceException e) {
-                CommonExceptionHandler.process(e);
-            }
-        } else {
-            changeFinishButtonAction();
-            finishButton.getShell().setDefaultButton(finishButton);
+    private void cancelAllBackgroundJobs() {
+//        if (backgroundLoadUIJob != null) {
+//            backgroundLoadUIJob.cancel();
+//            backgroundLoadUIJob = null;
+//        }
+        if (backgroundSandboxChecker != null) {
+            backgroundSandboxChecker.cancel();
+            Optional.ofNullable(backgroundSandboxChecker.getThread()).ifPresent(t -> t.interrupt());
+            backgroundSandboxChecker = null;
+        }
+        if (backgroundUpdateChecker != null) {
+            backgroundUpdateChecker.cancel();
+            Optional.ofNullable(backgroundUpdateChecker.getThread()).ifPresent(t -> t.interrupt());
+            backgroundUpdateChecker = null;
+        }
+        if (backgroundRetrieveProjectsJob != null) {
+            backgroundRetrieveProjectsJob.cancel();
+            Optional.ofNullable(backgroundRetrieveProjectsJob.getThread()).ifPresent(t -> t.interrupt());
+            backgroundRetrieveProjectsJob = null;
+        }
+        if (backgroundRefreshJob != null) {
+            backgroundRefreshJob.cancel();
+            Optional.ofNullable(backgroundRefreshJob.getThread()).ifPresent(t -> t.interrupt());
+            backgroundRefreshJob = null;
         }
     }
-
-    // protected void initConnection() {
-    // if (storedConnections == null || storedConnections.size() == 0) {
-    // getConnection();
-    // }
-    // }
 
     protected void refreshBranchAreaVisible() {
         boolean tisRemote = isSVNProviderPluginLoadedRemote();
@@ -1293,31 +1508,27 @@ public class LoginProjectPage extends AbstractLoginActionPage {
     }
 
     protected void refreshNecessaryVisible(boolean isRemote) {
-        boolean isSVNPluginLoaded = PluginChecker.isSVNProviderPluginLoaded();
+        Display.getDefault().syncExec(() -> {
+            refreshImportLocalProjectVisible(!isRemote);
+            refreshImportDemoProjectVisible(!isRemote);
+            refreshCreateNewProjectVisible(!isRemote);
+            refreshBranchAreaVisible(isRemote);
+            refreshCreateSandboxProjectVisible(isNeedSandboxProject, false);
 
-        boolean needSandboxProject = isRemote;
-        if (!errorManager.isHasAuthException()) {
-            // connect administrator exist error, avoid check isNeedSandboxProject from remote
-            needSandboxProject = isNeedSandboxProject();
-        }
-        refreshCreateSandboxProjectVisible(needSandboxProject);
-        refreshImportLocalProjectVisible(!isRemote);
-        refreshImportDemoProjectVisible(!isRemote);
-        refreshCreateNewProjectVisible(!isRemote);
-        refreshBranchAreaVisible(isSVNPluginLoaded && isRemote);
+            refreshProjectListLayout();
+        });
+    }
 
+    protected void refreshProjectListLayout() {
         Control projectListAreaBottomControl = null;
-        if (isSVNPluginLoaded) {
-            if (isRemote) {
-                if (needSandboxProject) {
-                    projectListAreaBottomControl = createSandBoxProject;
-                } else {
-                    projectListAreaBottomControl = navigateArea;
-                }
+        if (createSandBoxProject.isVisible()) {
+            projectListAreaBottomControl = createSandBoxProject;
+        } else {
+            if (LoginHelper.isRemotesConnection(getConnection())) {
+                projectListAreaBottomControl = navigateArea;
+            } else {
+                projectListAreaBottomControl = createNewProject;
             }
-        }
-        if (projectListAreaBottomControl == null) {
-            projectListAreaBottomControl = createNewProject;
         }
         FormData formData = (FormData) projectListArea.getLayoutData();
         if (projectListAreaBottomControl == navigateArea) {
@@ -1327,11 +1538,10 @@ public class LoginProjectPage extends AbstractLoginActionPage {
         }
 
         projectOperationArea.layout();
-
         projectOperationArea.update();
     }
 
-    protected void refreshCreateSandboxProjectVisible(boolean visible) {
+    protected void refreshCreateSandboxProjectVisible(boolean visible, boolean refresh) {
         createSandBoxProject.setVisible(visible);
         FormData formData = (FormData) createSandBoxProject.getLayoutData();
         if (visible) {
@@ -1340,6 +1550,9 @@ public class LoginProjectPage extends AbstractLoginActionPage {
         } else {
             formData.height = 0;
             formData.bottom.offset = 0;
+        }
+        if (refresh) {
+            refreshProjectListLayout();
         }
     }
 
@@ -1416,11 +1629,8 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
     private void updateFinishButtonStatus() {
         List<ILoginConnectionService> loginConnectionServices = LoginConnectionManager.getRemoteConnectionService();
-        boolean localConn = false;
         String errorMsg = null;
         if (getConnection() != null) {
-            localConn = getConnection().getRepositoryId() == null
-                    || getConnection().getRepositoryId().equals(RepositoryConstants.REPOSITORY_LOCAL_ID);
             if (loginConnectionServices.size() > 0 && getConnection().isComplete()) {
                 for (ILoginConnectionService loginConncetion : loginConnectionServices) {
                     errorMsg = loginConncetion.checkConnectionValidation(getConnection().getName(), getConnection()
@@ -1463,92 +1673,95 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
             finishButton.getShell().setDefaultButton(finishButton);
         }
-        // refreshBranchAreaVisible(!localConn);
     }
 
     /**
      * @see org.talend.repository.ui.login.LoginComposite#setStatusArea()
      * @throws PersistenceException
      */
-    public void checkErrors() throws PersistenceException {
-        try {
-            // errorManager.clearAllMessages();
-            if (getConnection() != null) {
-                final boolean localConn = getConnection().getRepositoryId() == null
-                        || getConnection().getRepositoryId().equals(RepositoryConstants.REPOSITORY_LOCAL_ID);
-                boolean visible = PluginChecker.isSVNProviderPluginLoaded() && !localConn;
-
-                if (!isWorkSpaceSame()) {
-                    errorManager.setErrMessage(Messages.getString("LoginProjectPage.DIFFERENT_WORKSPACE")); //$NON-NLS-1$
-                } else if (projectViewer == null || projectViewer.getList().getItemCount() > 0) {
-                    // for normal case, no need to show message anymore
-                    // String productName = brandingService.getFullProductName();
-                    // if (productName != null) {
-                    //                        String[] split = productName.split(" "); //$NON-NLS-1$
-                    // if (split != null && split.length > 3) {
-                    // productName = brandingService.getShortProductName();
-                    // }
-                    // }
-                    // errorManager.setInfoMessage(Messages.getString("LoginComposite.TisWorkspace_welcome", productName)); //$NON-NLS-1$
-                    errorManager.clearAllMessages();
-                } else {
-                    if (LoginHelper.isRemoteConnection(getConnection())) {
-                        errorManager.setErrMessage(Messages.getString("LoginProjectPage.project_need.remote.v1")); //$NON-NLS-1$
-                    } else if (LoginHelper.isCloudConnection(getConnection())) {
-                        errorManager.setErrMessage(Messages.getString("LoginProjectPage.project_need.remote.cloud")); //$NON-NLS-1$
-                    } else {
-                        errorManager.setErrMessage(Messages.getString("LoginComposite.PROJECT_NEED")); //$NON-NLS-1$
-                    }
-                }
-            } else {
-                errorManager.setErrMessage(Messages.getString("LoginComposite.connectionEmpty")); //$NON-NLS-1$
+    public void checkErrors() throws Exception {
+        Exception ex[] = new Exception[1];
+        if (hasUpdate) {
+            return;
+        }
+        Display.getDefault().syncExec(() -> {
+            if (hasUpdate) {
+                return;
             }
-        } finally {
-            updateFinishButtonStatus();
+            try {
+                if (getConnection() != null) {
+                    if (!isWorkSpaceSame()) {
+                        errorManager.setErrMessage(Messages.getString("LoginProjectPage.DIFFERENT_WORKSPACE")); //$NON-NLS-1$
+                    } else if (projectViewer == null || projectViewer.getList().getItemCount() > 0) {
+                        errorManager.clearAllMessages();
+                    } else {
+                        if (LoginHelper.isRemoteConnection(getConnection())) {
+                            errorManager.setErrMessage(Messages.getString("LoginProjectPage.project_need.remote.v1")); //$NON-NLS-1$
+                        } else if (LoginHelper.isCloudConnection(getConnection())) {
+                            errorManager.setErrMessage(Messages.getString("LoginProjectPage.project_need.remote.cloud")); //$NON-NLS-1$
+                        } else {
+                            errorManager.setErrMessage(Messages.getString("LoginComposite.PROJECT_NEED")); //$NON-NLS-1$
+                        }
+                    }
+                } else {
+                    errorManager.setErrMessage(Messages.getString("LoginComposite.connectionEmpty")); //$NON-NLS-1$
+                }
+            } catch (Exception e) {
+                ex[0] = e;
+            } finally {
+                updateFinishButtonStatus();
+            }
+        });
+        if (ex[0] != null) {
+            throw ex[0];
         }
     }
 
-    protected void validateUpdate() throws JSONException {
+    protected void validateUpdate(IProgressMonitor monitor) throws JSONException {
         if (errorManager.isHasAuthException()) {
             // can't connect to remote
             return;
         }
         final ConnectionBean currentBean = getConnection();
-        String repositoryId = null;
-        // at 1st time open the studio there are no bean at all,so need avoid NPE
-        if (currentBean != null) {
-            repositoryId = currentBean.getRepositoryId();
+        if (monitor.isCanceled()) {
+            return;
         }
-
         try {
             if (currentBean != null && isSVNProviderPluginLoadedRemote() && isWorkSpaceSame()) {
                 if (afterUpdate) {
-                    refreshProjectOperationAreaEnable(false);
-                    errorManager.setErrMessage(Messages.getString("LoginProjectPage.archivaFinish")); //$NON-NLS-1$
-                    changeFinishButtonAction(FINISH_ACTION_RESTART);
+                    Display.getDefault().syncExec(() -> {
+                        if (monitor.isCanceled() || isDisposed()) {
+                            return;
+                        }
+                        refreshProjectOperationAreaEnable(false);
+                        errorManager.setErrMessage(Messages.getString("LoginProjectPage.archivaFinish")); //$NON-NLS-1$
+                        changeFinishButtonAction(FINISH_ACTION_RESTART);
+                    });
                 } else {
                     if (!SharedStudioUtils.isSharedStudioMode()) {
-                        OverTimePopupDialogTask<Boolean> overTimePopupDialogTask = new OverTimePopupDialogTask<Boolean>() {
-
-                            @Override
-                            public Boolean run() throws Throwable {
-                                return LoginHelper.isStudioNeedUpdate(currentBean);
-                            }
-                        };
-                        overTimePopupDialogTask.setNeedWaitingProgressJob(false);
-                        boolean needUpdate = overTimePopupDialogTask.runTask();
-                        if (needUpdate && isWorkSpaceSame()) {
-                            refreshProjectOperationAreaEnable(false);
-                            errorManager.setErrMessage(Messages.getString("LoginProjectPage.updateArchiva")); //$NON-NLS-1$
-                            changeFinishButtonAction(FINISH_ACTION_UPDATE);
+                        hasUpdate = LoginHelper.isStudioNeedUpdate(currentBean);
+                        if (monitor.isCanceled()) {
+                            return;
                         }
+                        if (hasUpdate && isWorkSpaceSame()) {
+                            Display.getDefault().syncExec(() -> {
+                                if (monitor.isCanceled() || isDisposed()) {
+                                    return;
+                                }
+                                refreshProjectOperationAreaEnable(false);
+                                errorManager.setErrMessage(Messages.getString("LoginProjectPage.updateArchiva")); //$NON-NLS-1$
+                                changeFinishButtonAction(FINISH_ACTION_UPDATE);
+                            });
+                        }
+                    } else {
+                        validatePatchForSharedMode();
                     }
                 }
             }
         } catch (PersistenceException e) {
             CommonExceptionHandler.process(e);
         } catch (SystemException e) {
-            updateArchivaErrorButton();
+            Display.getDefault().syncExec(() -> updateArchivaErrorButton());
         } catch (Throwable e) {
             CommonExceptionHandler.process(e);
         }
@@ -1561,11 +1774,16 @@ public class LoginProjectPage extends AbstractLoginActionPage {
             missingPatchVersion = updateService.getSharedStudioMissingPatchVersion();
         }
         if (missingPatchVersion != null) {
-            errorManager.setWarnMessage(Messages.getString("LoginProjectPage.sharedModeMissingPatchFile", missingPatchVersion));
+            String finalMissingPatchVersion = missingPatchVersion;
+            Display.getDefault().syncExec(() -> errorManager
+                    .setWarnMessage(Messages.getString("LoginProjectPage.sharedModeMissingPatchFile", finalMissingPatchVersion)));
         }
     }
 
     private void updateArchivaErrorButton() {
+        if (this.isDisposed()) {
+            return;
+        }
         refreshProjectOperationAreaEnable(false);
         errorManager.setWarnMessage(Messages.getString("LoginComposite.archivaFailed")); //$NON-NLS-1$
         changeFinishButtonAction(FINISH_ACTION_UPDATE_DETAILS);
@@ -1618,38 +1836,15 @@ public class LoginProjectPage extends AbstractLoginActionPage {
         }
     }
 
-    private void updateServerFields() {
-        setRepositoryContextInContext();
-        validateFields();
-
-        if (isAuthenticationNeeded()) {
-            populateRemoteLoginElements();
-        } else {
-            unpopulateRemoteLoginElements();
-        }
-    }
-
     private void clearAndDisableProjectList() {
-        if (projectListArea != null) {
-            projectListArea.setEnabled(false);
-        }
-        if (projectViewer != null) {
-            projectViewer.setInput(null);
-        }
-    }
-
-    /**
-     * fill login values with default elements.
-     */
-    private void populateRemoteLoginElements() {
-        clearAndDisableProjectList();
-    }
-
-    /**
-     * clear login values.
-     */
-    private void unpopulateRemoteLoginElements() {
-        fillUIProjectListWithBusyCursor();
+        Display.getDefault().syncExec(() -> {
+            if (projectListArea != null) {
+                projectListArea.setEnabled(false);
+            }
+            if (projectViewer != null) {
+                projectViewer.setInput(null);
+            }
+        });
     }
 
     private boolean validateFields() {
@@ -1669,17 +1864,6 @@ public class LoginProjectPage extends AbstractLoginActionPage {
         }
         if (valid && !serverIsLocal && connection.getPassword().length() == 0) {
             valid = false;
-        }
-
-        return valid;
-    }
-
-    private boolean validateProject() {
-        boolean valid = true;
-
-        if (projectViewer != null && projectViewer.getList().getItemCount() == 0) {
-            valid = false;
-            //            errorMsg = Messages.getString("LoginComposite.projectEmpty"); //$NON-NLS-1$
         }
 
         return valid;
@@ -1765,18 +1949,12 @@ public class LoginProjectPage extends AbstractLoginActionPage {
     }
 
     public ConnectionBean getConnection() {
-        IStructuredSelection sel = (IStructuredSelection) connectionsViewer.getSelection();
-        ConnectionBean firstElement = (ConnectionBean) sel.getFirstElement();
-        // if (!PluginChecker.isSVNProviderPluginLoaded()) {
-        // if (bean == null) {
-        // bean = ConnectionBean.getDefaultConnectionBean();
-        //                bean.setUser("test@talend.com"); //$NON-NLS-1$
-        // bean.setWorkSpace(getRecentWorkSpace());
-        // bean.setComplete(true);
-        // }
-        // return bean;
-        // }
-        return firstElement;
+        ConnectionBean result[] = new ConnectionBean[1];
+        Display.getDefault().syncExec(() -> {
+            IStructuredSelection sel = (IStructuredSelection) connectionsViewer.getSelection();
+            result[0] = (ConnectionBean) sel.getFirstElement();
+        });
+        return result[0];
     }
 
     public boolean isWorkSpaceSame() {
@@ -1793,7 +1971,7 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
             @Override
             public void run() {
-                fillUIProjectList();
+                fillUIProjectList(new NullProgressMonitor());
             }
         });
     }
@@ -1825,29 +2003,76 @@ public class LoginProjectPage extends AbstractLoginActionPage {
     /**
      * @see org.talend.repository.ui.login.LoginComposite#populateProjectList()
      */
-    protected void fillUIProjectList() {
-
+    protected void fillUIProjectList(IProgressMonitor monitor) {
         Project[] projects = null;
+        Display display = Display.getDefault();
         if (!errorManager.isHasAuthException()) {
-            projects = loginHelper.getProjects(getConnection(), errorManager);
+            if (monitor.isCanceled() || isDisposed()) {
+                return;
+            }
+            display.syncExec(() -> {
+                if (monitor.isCanceled() || isDisposed()) {
+                    return;
+                }
+                projectViewer.setInput(new Project[0]);
+                Shell shell = getShell();
+                if (shell != null) {
+                    shell.setCursor(display.getSystemCursor(SWT.CURSOR_APPSTARTING));
+                }
+                finishButton.setEnabled(false);
+                getErrorManager().setWarnMessage(Messages.getString("LoginProjectPage.progress.retrieveProject"));
+            });
+            ConnectionBean connection = getConnection();
+            if (monitor.isCanceled() || isDisposed()) {
+                return;
+            }
+            projects = loginHelper.getProjects(connection, errorManager);
+            if (monitor.isCanceled() || isDisposed()) {
+                return;
+            }
+            if (LoginHelper.isRemotesConnection(connection)) {
+                scheduleCheckSandboxJob();
+            }
         }
         if (projects == null) {
             projects = new Project[0];
         }
 
-        if (projectViewer != null) {
-            projectViewer.setInput(projects);
+        final Project[] finalProjects = projects;
+        if (monitor.isCanceled() || isDisposed()) {
+            return;
         }
+        Display.getDefault().syncExec(() -> {
+            if (monitor.isCanceled() || isDisposed()) {
+                return;
+            }
+            if (projectViewer != null) {
+                projectViewer.setInput(finalProjects);
+            }
+            Optional.ofNullable(getShell()).ifPresent(c -> c.setCursor(null));
 
-        // importDemoProjectAction.setExistingProjects(projects);
-        if (projects.length > 0) {
-            refreshProjectListAreaEnable();
-            // Try to select the last recently used project
-            selectLastUsedProject();
-        } else {
-            refreshProjectListAreaEnable(false);
-            branchesViewer.setInput(null);
-        }
+            // importDemoProjectAction.setExistingProjects(projects);
+            if (finalProjects.length > 0) {
+                if (monitor.isCanceled() || isDisposed()) {
+                    return;
+                }
+                refreshProjectListAreaEnable();
+                if (monitor.isCanceled() || isDisposed()) {
+                    return;
+                }
+                // Try to select the last recently used project
+                selectLastUsedProject();
+            } else {
+                if (monitor.isCanceled() || isDisposed()) {
+                    return;
+                }
+                refreshProjectListAreaEnable(false);
+                if (monitor.isCanceled() || isDisposed()) {
+                    return;
+                }
+                branchesViewer.setInput(null);
+            }
+        });
 
     }
 
@@ -1857,15 +2082,17 @@ public class LoginProjectPage extends AbstractLoginActionPage {
      * @return
      */
     protected boolean isSVNProviderPluginLoadedRemote() {
-        boolean isRemote = false;
-        if (PluginChecker.isSVNProviderPluginLoaded()) {
-            StructuredSelection selection = (StructuredSelection) connectionsViewer.getSelection();
-            Object firstElement = selection.getFirstElement();
-            if (firstElement instanceof ConnectionBean) {
-                isRemote = LoginHelper.isRemotesConnection((ConnectionBean) firstElement);
+        AtomicBoolean isRemote = new AtomicBoolean(false);
+        Display.getDefault().syncExec(() -> {
+            if (PluginChecker.isSVNProviderPluginLoaded()) {
+                StructuredSelection selection = (StructuredSelection) connectionsViewer.getSelection();
+                Object firstElement = selection.getFirstElement();
+                if (firstElement instanceof ConnectionBean) {
+                    isRemote.set(LoginHelper.isRemotesConnection((ConnectionBean) firstElement));
+                }
             }
-        }
-        return isRemote;
+        });
+        return isRemote.get();
     }
 
     protected void selectLastUsedProject() {
@@ -2066,53 +2293,61 @@ public class LoginProjectPage extends AbstractLoginActionPage {
     }
 
     public Project getProject() {
-        Project project = null;
-        if (projectViewer != null && !projectViewer.getSelection().isEmpty()) {
-            IStructuredSelection sel = (IStructuredSelection) projectViewer.getSelection();
-            project = (Project) sel.getFirstElement();
-        }
-        return project;
+        Project project[] = new Project[1];
+        Display.getDefault().syncExec(() -> {
+            if (projectViewer != null && !projectViewer.getSelection().isEmpty()) {
+                IStructuredSelection sel = (IStructuredSelection) projectViewer.getSelection();
+                project[0] = (Project) sel.getFirstElement();
+            }
+        });
+        return project[0];
     }
 
     public String getBranch() {
-        Project project = getProject();
-        boolean isRemoteConnection = LoginHelper.isRemotesConnection(getConnection());
-        if (branchesViewer != null && isRemoteConnection && !branchesViewer.getSelection().isEmpty() && project != null) {
-            IStructuredSelection ss = (IStructuredSelection) branchesViewer.getSelection();
-            String branch = (String) ss.getFirstElement();
-            /*
-             * verify branches
-             */
-            // List<String> branchList = getProjectBranches(project);
-            // if (branchList != null && branchList.contains(branch)) {
-            return branch;
-            // }
-        } else if (!isRemoteConnection && project != null) {
-            List<ProjectReference> referenceProjects = project.getProjectReferenceList();
-            String currentBranch = null;
-            if (referenceProjects != null && !referenceProjects.isEmpty()) {
-                boolean allBranchesAreSame = true;
-                for (ProjectReference referenceProject : referenceProjects) {
-                    String branchFromReference = referenceProject.getBranch();
-                    if (currentBranch == null) {
-                        if (branchFromReference == null) {
-                            branchFromReference = ""; //$NON-NLS-1$
-                        }
-                        currentBranch = branchFromReference;
-                        continue;
-                    }
-                    if (!currentBranch.equals(branchFromReference)) {
-                        allBranchesAreSame = false;
-                        break;
+        try {
+            Project project = getProject();
+            boolean isRemoteConnection = LoginHelper.isRemotesConnection(getConnection());
+            final StringBuilder branchStrBuilder = new StringBuilder();
+            Display.getDefault().syncExec(() -> {
+                if (branchesViewer != null && isRemoteConnection && !branchesViewer.getSelection().isEmpty() && project != null) {
+                    IStructuredSelection ss = (IStructuredSelection) branchesViewer.getSelection();
+                    String branch = (String) ss.getFirstElement();
+                    if (StringUtils.isNotBlank(branch)) {
+                        branchStrBuilder.append(branch);
                     }
                 }
-                if (!allBranchesAreSame) {
+            });
+            if (0 < branchStrBuilder.length()) {
+                return branchStrBuilder.toString();
+            } else if (!isRemoteConnection && project != null) {
+                List<ProjectReference> referenceProjects = project.getProjectReferenceList();
+                String currentBranch = null;
+                if (referenceProjects != null && !referenceProjects.isEmpty()) {
+                    boolean allBranchesAreSame = true;
+                    for (ProjectReference referenceProject : referenceProjects) {
+                        String branchFromReference = referenceProject.getBranch();
+                        if (currentBranch == null) {
+                            if (branchFromReference == null) {
+                                branchFromReference = ""; //$NON-NLS-1$
+                            }
+                            currentBranch = branchFromReference;
+                            continue;
+                        }
+                        if (!currentBranch.equals(branchFromReference)) {
+                            allBranchesAreSame = false;
+                            break;
+                        }
+                    }
+                    if (!allBranchesAreSame) {
+                        currentBranch = ""; //$NON-NLS-1$
+                    }
+                } else {
                     currentBranch = ""; //$NON-NLS-1$
                 }
-            } else {
-                currentBranch = ""; //$NON-NLS-1$
+                return currentBranch;
             }
-            return currentBranch;
+        } catch (Exception e) {
+            ExceptionHandler.process(e);
         }
         return null;
     }
@@ -2134,7 +2369,6 @@ public class LoginProjectPage extends AbstractLoginActionPage {
         } else if (ImportProjectAsAction.getInstance().isImportedSeveralProjects()) {
             resetProjectOperationSelectionWithBusyCursor();
         }
-        validateProject();
     }
 
     public void importDemoProject() {
@@ -2152,7 +2386,6 @@ public class LoginProjectPage extends AbstractLoginActionPage {
                 ExceptionHandler.process(e);
             }
         }
-        validateProject();
     }
 
     private void createSandboxProject() {
@@ -2168,15 +2401,7 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
             loginHelper.saveConnections();
 
-            fillUIContentsWithBusyCursor();
-        }
-        try {
-            checkErrors();
-        } catch (PersistenceException e1) {
-            CommonExceptionHandler.process(e1);
-        }
-        if (getConnection() != null) { // reset the context, because there are some changes in create sandbox dialog
-            setRepositoryContextInContext();
+            refreshUIData();
         }
     }
 
@@ -2203,13 +2428,10 @@ public class LoginProjectPage extends AbstractLoginActionPage {
             selectProject(project.getLabel());
             checkErrors();
             newProjectName.setText(""); //$NON-NLS-1$
-        } catch (PersistenceException e) {
+        } catch (Exception e) {
             MessageDialog.openError(getShell(), Messages.getString("NewProjectWizard.failureTitle"), Messages //$NON-NLS-1$
                     .getString("NewProjectWizard.failureText")); //$NON-NLS-1$
             MessageBoxExceptionHandler.process(e);
-        } catch (JSONException e) {
-            // TODO Auto-generated catch block
-            ExceptionHandler.process(e);
         }
     }
 
@@ -2220,6 +2442,65 @@ public class LoginProjectPage extends AbstractLoginActionPage {
     @Override
     protected ErrorManager createErrorManager() {
         return new LoginProjectPageErrorManager();
+    }
+
+    private void onConnectionSelected(IProgressMonitor monitor, boolean forceRefresh) {
+        try {
+            if (forceRefresh) {
+                Display.getDefault().syncExec(() -> selectExistingProject.setEnabled(true));
+            }
+            final ConnectionBean connection = getConnection();
+            if (connection == null) {
+                if (monitor.isCanceled() || isDisposed()) {
+                    return;
+                }
+                cancelAllBackgroundJobs();
+                resetProjectOperationSelection(false);
+                if (monitor.isCanceled() || isDisposed()) {
+                    return;
+                }
+                clearAndDisableProjectList();
+                if (monitor.isCanceled() || isDisposed()) {
+                    return;
+                }
+                checkErrors();
+                return;
+            }
+            if (!forceRefresh && connection.equals(loginHelper.getCurrentSelectedConnBean())) {
+                // in case they are equal but different object id
+                loginHelper.setCurrentSelectedConnBean(connection);
+                return;
+            } else {
+                loginHelper.setCurrentSelectedConnBean(connection);
+            }
+            cancelAllBackgroundJobs();
+            if (monitor.isCanceled() || isDisposed()) {
+                return;
+            }
+            resetProjectOperationSelection(false);
+            clearAndDisableProjectList();
+            currentProjectSettings = null;
+            forceRefreshProjectBranchMap.clear();
+            loginFetchLicenseHelper.cancelAndClearFetchJobs();
+            errorManager.clearAllMessages();
+            setRepositoryContextInContext();
+
+            if (monitor.isCanceled() || isDisposed()) {
+                return;
+            }
+            scheduleRetrieveProjectsJob();
+            if (LoginHelper.isRemotesConnection(connection)) {
+                scheduleUpdateCheckerJob();
+            }
+        } catch (Exception e) {
+            CommonExceptionHandler.process(e);
+        } finally {
+            TalendProxySelector.checkProxy();
+        }
+    }
+
+    private void onRefresh() {
+        scheduleRefreshJob();
     }
 
     protected class ConnectionLabelProvider extends LabelProvider {
