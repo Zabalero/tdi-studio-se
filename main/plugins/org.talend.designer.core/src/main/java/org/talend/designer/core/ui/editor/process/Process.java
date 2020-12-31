@@ -270,10 +270,6 @@ public class Process extends Element implements IProcess2, IGEFProcess, ILastVer
 
     private List<byte[]> externalInnerContents = new ArrayList<byte[]>();
 
-    private Set<String> neededRoutines;
-
-    private Set<String> neededPigudf;
-
     private static final String SOURCE_JAVA_PIGUDF = "pigudf";
 
     private String componentsType;
@@ -1863,7 +1859,7 @@ public class Process extends Element implements IProcess2, IGEFProcess, ILastVer
             Iterator<RoutinesParameterType> iterator = routinesDependencies.iterator();
             while (iterator.hasNext()) {
                 RoutinesParameterType routine = iterator.next();
-                if (!allRoutinesSet.contains(routine.getName())) {
+                if (routine.getType() == null && !allRoutinesSet.contains(routine.getName())) {
                     iterator.remove();
                 }
             }
@@ -1981,7 +1977,7 @@ public class Process extends Element implements IProcess2, IGEFProcess, ILastVer
                 }
             }
             if (init) {
-                EList<RoutinesParameterType> allRoutines = getProcessType().getRoutinesDependencies();
+                EList<RoutinesParameterType> allRoutines = getProcessType().getParameters().getRoutinesParameter();
                 routinesDependencies.addAll(allRoutines.stream().filter(r -> r.getType() != null).collect(Collectors.toList()));
             }
         } catch (PersistenceException e) {
@@ -4700,11 +4696,15 @@ public class Process extends Element implements IProcess2, IGEFProcess, ILastVer
 
     @Override
     public Set<String> getNeededRoutines() {
-        // TODO
         Set<String> neededRoutines = new HashSet<>();
         neededRoutines.addAll(getNeededCodeItem(neededRoutines, ERepositoryObjectType.ROUTINES));
-        neededRoutines.addAll(getNeededCodeItem(neededRoutines, ERepositoryObjectType.ROUTINESJAR));
+        // neededRoutines.addAll(getNeededCodeItem(neededRoutines, ERepositoryObjectType.ROUTINESJAR));
         return neededRoutines;
+    }
+
+    // TODO add a new API to get all needed codesjar
+    public Set<Property> getNeededCodesJars() {
+        return null;
     }
 
     private Set<String> getNeededCodeItem(Set<String> neededCodeItem, ERepositoryObjectType itemType) {
@@ -4820,14 +4820,6 @@ public class Process extends Element implements IProcess2, IGEFProcess, ILastVer
             // }
             node.setPropertyValue(EParameterName.REPAINT.getName(), Boolean.TRUE);
         }
-    }
-
-    public void setNeededRoutines(Set<String> neededRoutines) {
-        this.neededRoutines = neededRoutines;
-    }
-
-    public void setNeededPigudf(Set<String> neededPigudf) {
-        this.neededPigudf = neededPigudf;
     }
 
     public List<RoutinesParameterType> getRoutineDependencies() {
