@@ -190,7 +190,7 @@
         <IMPORTS>
             <IMPORT NAME="google-api-client-1.25.0.jar" MODULE="google-api-client-1.25.0.jar" MVN="mvn:com.google.api-client/google-api-client/1.25.0"  REQUIRED="true" />
             <IMPORT NAME="google-api-services-oauth2-v2-rev151-1.25.0.jar" MODULE="google-api-services-oauth2-v2-rev151-1.25.0.jar" MVN="mvn:com.google.apis/google-api-services-oauth2/v2-rev151-1.25.0"  REQUIRED="true" />
-            <IMPORT NAME="google-api-services-bigquery-v2-rev454-1.25.0.jar" MODULE="google-api-services-bigquery-v2-rev454-1.25.0.jar" MVN="mvn:com.google.apis/google-api-services-bigquery/v2-rev454-1.25.0" REQUIRED="true" />
+            <IMPORT NAME="google-api-services-bigquery-v2-rev20201030-1.31.0.jar" MODULE="google-api-services-bigquery-v2-rev20201030-1.31.0.jar" MVN="mvn:com.google.apis/google-api-services-bigquery/v2-rev20201030-1.31.0" REQUIRED="true" />
             <IMPORT NAME="google-http-client-1.25.0.jar" MODULE="google-http-client-1.25.0.jar" MVN="mvn:com.google.http-client/google-http-client/1.25.0"  REQUIRED="true" />
             <IMPORT NAME="google-oauth-client-1.31.0.jar" MODULE="google-oauth-client-1.31.0.jar" MVN="mvn:com.google.oauth-client/google-oauth-client/1.31.0" REQUIRED="true" />
             <IMPORT NAME="google-http-client-jackson2-1.25.0.jar" MODULE="google-http-client-jackson2-1.25.0.jar" MVN="mvn:com.google.http-client/google-http-client-jackson2/1.25.0"  REQUIRED="true" />
