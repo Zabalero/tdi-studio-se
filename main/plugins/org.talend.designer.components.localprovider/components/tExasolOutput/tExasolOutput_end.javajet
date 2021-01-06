@@ -42,7 +42,7 @@ imports="
 
     String connection = ElementParameterParser.getValue(node,"__CONNECTION__");
     if(useExistingConnection) {
-        List<? extends INode> nodes = process.getNodesOfType("tDBConnection");
+        List<? extends INode> nodes = process.getNodesOfType("tExasolConnection");
         for (INode ne:nodes) {
             if (connection.equals(ne.getUniqueName())) {
                 setAutoCommit = "true".equals(ElementParameterParser.getValue(ne, "__AUTO_COMMIT__"));
@@ -181,11 +181,13 @@ imports="
         %>
             if(rowsToCommitCount_<%=cid%> != 0){
             	<%dbLog.commit().commitTry(null, dbLog.var("rowsToCommitCount"));%>
-            	conn_<%=cid%>.commit();
+            }
+            conn_<%=cid%>.commit();
+            if(rowsToCommitCount_<%=cid%> != 0){
             	<%dbLog.commit().commitDone(null);%>
             	rowsToCommitCount_<%=cid%> = 0;
-            	commitCounter_<%=cid%> = 0;
             }
+            commitCounter_<%=cid%> = 0;
         <%
         }
 

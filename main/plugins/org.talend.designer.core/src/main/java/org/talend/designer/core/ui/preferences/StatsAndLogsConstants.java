@@ -12,6 +12,7 @@
 // ============================================================================
 package org.talend.designer.core.ui.preferences;
 
+import org.talend.core.database.EDatabaseTypeName;
 import org.talend.designer.core.model.process.jobsettings.JobSettingsConstants;
 
 /**
@@ -67,6 +68,18 @@ public class StatsAndLogsConstants {
     public static final String[] DB_OUTPUT_COMPONENTS = new String[] {
             "tJDBCOutput", "tMysqlOutput", "tMSSqlOutput", ORACLE_WITH_SID_CONN_TYPE, ORACLE_WITH_SERVICE_CONN_TYPE, ORACLE_OCI,//$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$
             "tPostgresPlusOutput", "tPostgresqlOutput", "tDB2Output", "tSybaseOutput", "tIngresOutput", "tInterbaseOutput", "tSQLiteOutput", "tFirebirdOutput", "tInformixOutput", "tAccessOutput", "tTeradataOutput" }; //$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$ //$NON-NLS-5$ //$NON-NLS-6$ //$NON-NLS-7$ //$NON-NLS-8$ //$NON-NLS-9$ //$NON-NLS-10$
+
+//    public static final String[] SUPPORT_PRODUCT_NAMES1 = new String[] { "MYSQL", "ORACLE", "POSTGRESPLUS", "POSTGRESQL",
+//            "IBM_DB2", "SYBASE", "SQLITE", "FIREBIRD" };
+
+    public static final String[] SUPPORT_PRODUCT_NAMES = new String[] { EDatabaseTypeName.GENERAL_JDBC.getProduct(),
+            EDatabaseTypeName.MYSQL.getProduct(), EDatabaseTypeName.MSSQL.getProduct(),
+            EDatabaseTypeName.ORACLEFORSID.getProduct(), EDatabaseTypeName.ORACLESN.getProduct(),
+            EDatabaseTypeName.ORACLE_OCI.getProduct(), EDatabaseTypeName.PLUSPSQL.getProduct(),
+            EDatabaseTypeName.PSQL.getProduct(), EDatabaseTypeName.IBMDB2.getProduct(), EDatabaseTypeName.SYBASEASE.getProduct(),
+            EDatabaseTypeName.SQLITE.getProduct(), EDatabaseTypeName.FIREBIRD.getProduct(), EDatabaseTypeName.ACCESS.getProduct(),
+            EDatabaseTypeName.TERADATA.getProduct(), EDatabaseTypeName.INGRES.getProduct(),
+            EDatabaseTypeName.INTERBASE.getProduct(), EDatabaseTypeName.INFORMIX.getProduct() };
 
     private static final String[] PERL_DISPLAY_DBNAMES = new String[] {
             "MySQL", "Oracle with SID", "Oracle with service name", "Oracle OCI",//$NON-NLS-1$ //$NON-NLS-2$ //$NON-NLS-3$ //$NON-NLS-4$
@@ -161,7 +174,7 @@ public class StatsAndLogsConstants {
     public static final String[] PSQL_VERSION_CODE = new String[] {  "V9_X","PRIOR_TO_V9" }; //$NON-NLS-1$ //$NON-NLS-2$
 
     public static final String[] PSQL_VERSION_DRIVER = new String[] {
-            "postgresql-42.2.9.jar", "postgresql-8.3-603.jdbc3.jar" }; //$NON-NLS-1$ //$NON-NLS-2$
+            "postgresql-42.2.14.jar", "postgresql-8.4-703.jdbc4.jar" }; //$NON-NLS-1$ //$NON-NLS-2$
 
     public static final String[][] DISPLAY_DBNAMES = new String[][] { PERL_DISPLAY_DBNAMES, JAVA_DISPLAY_DBNAMES };
 

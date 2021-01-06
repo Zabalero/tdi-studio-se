@@ -51,6 +51,7 @@ import org.talend.designer.abstractmap.ui.dnd.DraggingInfosPopup;
 import org.talend.designer.abstractmap.ui.listener.DropTargetOperationListener;
 import org.talend.designer.abstractmap.ui.listener.MouseScrolledListener;
 import org.talend.designer.abstractmap.ui.visualmap.link.IMapperLink;
+import org.talend.designer.core.model.components.EParameterName;
 import org.talend.designer.dbmap.external.data.ExternalDbMapUiProperties;
 import org.talend.designer.dbmap.managers.MapperManager;
 import org.talend.designer.dbmap.managers.UIManager;
@@ -201,7 +202,6 @@ public class MapperUI {
         mainSashForm.setLayoutData(mainSashFormGridData);
 
         datasFlowViewSashForm = new SashForm(mainSashForm, SWT.SMOOTH | SWT.HORIZONTAL | SWT.BORDER);
-        datasFlowViewSashForm.setBackgroundMode(SWT.INHERIT_FORCE);
 
         initBackgroundComponents();
 
@@ -244,6 +244,12 @@ public class MapperUI {
                 dbmsId = conn.getMetadataTable().getDbms();
             }
         }
+        if (dbmsId == null) {
+            Object dbmsValue = mapperManager.getElementParameterValue(EParameterName.MAPPING.getName());
+            if (dbmsValue != null && dbmsValue instanceof String) {
+                dbmsId = (String) dbmsValue;
+            }
+        }
         
         tabFolderEditors = new TabFolderEditors(mainSashForm, SWT.BORDER, mapperManager, dbmsId);
 
@@ -252,6 +258,19 @@ public class MapperUI {
         createVarsZoneWithTables(mapperModel, display);
 
         createOutputZoneWithTables(mapperModel, uiManager, display);
+
+        if (WindowSystem.isBigSurOrLater()) {
+            Color bgColorTransparent = ColorProviderMapper.getRGBAColor(ColorInfo.COLOR_BACKGROUND_TRANSPRENT);
+            datasFlowViewSashForm.setBackgroundMode(SWT.INHERIT_NONE);
+            sc1.setBackground(bgColorTransparent);
+            inputTablesZoneView.setBackground(bgColorTransparent);
+            sc2.setBackground(bgColorTransparent);
+            varsTableZoneView.setBackground(bgColorTransparent);
+            sc3.setBackground(bgColorTransparent);
+            outputTablesZoneView.setBackground(bgColorTransparent);
+        } else {
+            datasFlowViewSashForm.setBackgroundMode(SWT.INHERIT_FORCE);
+        }
 
         mapperManager.initInternalData();
 
@@ -512,7 +531,7 @@ public class MapperUI {
     }
 
     private void createInputZoneWithTables(MapperModel mapperModel, UIManager uiManager, final Display display) {
-        inputsZone = new InputsZone(datasFlowViewSashForm, SWT.NONE, mapperManager);
+        inputsZone = new InputsZone(datasFlowViewSashForm, getZoneStyle(), mapperManager);
         inputsZone.createHeaderZoneComponents();
 
         sc1 = new ScrolledComposite(inputsZone, getBorder() | SWT.H_SCROLL | SWT.V_SCROLL);
@@ -599,7 +618,7 @@ public class MapperUI {
     private void createVarsZoneWithTables(MapperModel mapperModel, final Display display) {
         Control previousControl;
         // Feature TDI-26691 : Add search option
-        SearchZone searchZone = new SearchZone(datasFlowViewSashForm, SWT.NONE, mapperManager);
+        SearchZone searchZone = new SearchZone(datasFlowViewSashForm, getZoneStyle(), mapperManager);
         searchZone.createSearchZone();
 
         sc2 = new ScrolledComposite(searchZone, getBorder() | SWT.H_SCROLL | SWT.V_SCROLL);
@@ -653,7 +672,7 @@ public class MapperUI {
 
     private void createOutputZoneWithTables(MapperModel mapperModel, final UIManager uiManager, final Display display) {
         Control previousControl;
-        outputsZone = new OutputsZone(datasFlowViewSashForm, SWT.NONE, mapperManager);
+        outputsZone = new OutputsZone(datasFlowViewSashForm, getZoneStyle(), mapperManager);
         outputsZone.createHeaderZoneComponents();
         // this.dropTargetOperationListener.addControl(outputsZone);
 
@@ -740,6 +759,10 @@ public class MapperUI {
 
     private int getBorder() {
         return SHOW_BORDERS ? SWT.BORDER : SWT.NONE;
+    }
+
+    private int getZoneStyle() {
+        return WindowSystem.isBigSurOrLater() ? (SWT.NONE | SWT.NO_BACKGROUND) : SWT.NONE;
     }
 
     /**

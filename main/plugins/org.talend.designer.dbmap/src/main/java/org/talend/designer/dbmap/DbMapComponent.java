@@ -181,6 +181,22 @@ public class DbMapComponent extends AbstractMapComponent {
                 elemParams.add(activeDelimitedIdentifiersEP);
             }
             activeDelimitedIdentifiersEP.setValue(getGenerationManager().isUseDelimitedIdentifiers());
+
+            //
+            IElementParameter useAliasInOutputTableEP = origNode
+                    .getElementParameter(EParameterName.USE_ALIAS_IN_OUTPUT_TABLE.getName());
+            if (useAliasInOutputTableEP == null) {
+                useAliasInOutputTableEP = new ElementParameter(origNode);
+                useAliasInOutputTableEP.setShow(false);
+                useAliasInOutputTableEP.setFieldType(EParameterFieldType.CHECK);
+                useAliasInOutputTableEP.setName(EParameterName.USE_ALIAS_IN_OUTPUT_TABLE.getName());
+                useAliasInOutputTableEP.setCategory(EComponentCategory.TECHNICAL);
+                useAliasInOutputTableEP.setNumRow(99);
+                useAliasInOutputTableEP.setReadOnly(false);
+                List<IElementParameter> elemParams = (List<IElementParameter>) origNode.getElementParameters();
+                elemParams.add(useAliasInOutputTableEP);
+            }
+            useAliasInOutputTableEP.setValue(getGenerationManager().isUseAliasInOutputTable());
         }
         mapperMain.loadModelFromInternalData();
         metadataListOut = mapperMain.getMetadataListOut();
@@ -516,7 +532,7 @@ public class DbMapComponent extends AbstractMapComponent {
      * @param newTableName
      * @param newColumnName
      */
-    private void replaceLocationsInAllExpressions(TableEntryLocation oldLocation, TableEntryLocation newLocation,
+    public void replaceLocationsInAllExpressions(TableEntryLocation oldLocation, TableEntryLocation newLocation,
             boolean tableRenamed) {
         // replace old location by new location for all expressions in mapper
         List<ExternalDbMapTable> tables = new ArrayList<ExternalDbMapTable>(externalData.getInputTables());
@@ -612,6 +628,7 @@ public class DbMapComponent extends AbstractMapComponent {
                 throw new IllegalArgumentException(Messages.getString("DbMapComponent.unknowValue") + value); //$NON-NLS-1$
             }
             updateUseDelimitedIdentifiersStatus();
+            updateUseAliasInOutputTableStatus();
         }
 
         return generationManager;
@@ -621,6 +638,7 @@ public class DbMapComponent extends AbstractMapComponent {
     public void setOriginalNode(INode originalNode) {
         super.setOriginalNode(originalNode);
         updateUseDelimitedIdentifiersStatus();
+        updateUseAliasInOutputTableStatus();
     }
 
     private void updateUseDelimitedIdentifiersStatus() {
@@ -639,6 +657,25 @@ public class DbMapComponent extends AbstractMapComponent {
                 }
             }
             generationManager.setUseDelimitedIdentifiers(activeDelimitedIdentifiers);
+        }
+    }
+
+    private void updateUseAliasInOutputTableStatus() {
+        if (generationManager == null) {
+            return;
+        }
+        INode oriNode = getOriginalNode();
+        if (oriNode != null) {
+            IElementParameter useAliasInOutputTableEP = oriNode
+                    .getElementParameter(EParameterName.USE_ALIAS_IN_OUTPUT_TABLE.getName());
+            boolean useAliasInOutputTable = false;
+            if (useAliasInOutputTableEP != null) {
+                Object value = useAliasInOutputTableEP.getValue();
+                if (value != null) {
+                    useAliasInOutputTable = Boolean.valueOf(value.toString());
+                }
+            }
+            generationManager.setUseAliasInOutputTable(useAliasInOutputTable);
         }
     }
 

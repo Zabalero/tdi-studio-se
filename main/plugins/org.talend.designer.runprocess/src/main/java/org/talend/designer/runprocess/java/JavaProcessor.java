@@ -76,6 +76,7 @@ import org.eclipse.jdt.debug.core.JDIDebugModel;
 import org.eclipse.jdt.internal.ui.JavaPlugin;
 import org.eclipse.jdt.internal.ui.text.java.JavaFormattingStrategy;
 import org.eclipse.jdt.launching.IJavaLaunchConfigurationConstants;
+import org.eclipse.jdt.launching.sourcelookup.advanced.AdvancedJavaLaunchDelegate;
 import org.eclipse.jdt.ui.text.IJavaPartitions;
 import org.eclipse.jdt.ui.text.JavaTextTools;
 import org.eclipse.jface.dialogs.MessageDialog;
@@ -104,6 +105,7 @@ import org.talend.core.PluginChecker;
 import org.talend.core.context.Context;
 import org.talend.core.context.RepositoryContext;
 import org.talend.core.hadoop.HadoopConstants;
+import org.talend.core.model.components.ComponentCategory;
 import org.talend.core.model.components.EComponentType;
 import org.talend.core.model.general.ModuleNeeded;
 import org.talend.core.model.process.IContext;
@@ -120,6 +122,7 @@ import org.talend.core.model.properties.Property;
 import org.talend.core.model.repository.ERepositoryObjectType;
 import org.talend.core.model.runprocess.IJavaProcessorStates;
 import org.talend.core.model.utils.JavaResourcesHelper;
+import org.talend.core.model.utils.NodeUtil;
 import org.talend.core.prefs.ITalendCorePrefConstants;
 import org.talend.core.runtime.CoreRuntimePlugin;
 import org.talend.core.runtime.maven.MavenArtifact;
@@ -128,6 +131,7 @@ import org.talend.core.runtime.process.ITalendProcessJavaProject;
 import org.talend.core.runtime.process.LastGenerationInfo;
 import org.talend.core.runtime.process.TalendProcessArgumentConstant;
 import org.talend.core.runtime.process.TalendProcessOptionConstants;
+import org.talend.core.runtime.projectsetting.RuntimeLineageManager;
 import org.talend.core.ui.services.IRulesProviderService;
 import org.talend.core.utils.BitwiseOptionUtils;
 import org.talend.designer.codegen.ICodeGenerator;
@@ -137,6 +141,7 @@ import org.talend.designer.core.IDesignerCoreService;
 import org.talend.designer.core.ISyntaxCheckableEditor;
 import org.talend.designer.core.model.components.EParameterName;
 import org.talend.designer.core.model.utils.emf.talendfile.ProcessType;
+import org.talend.designer.core.runprocess.Processor;
 import org.talend.designer.core.ui.editor.CodeEditorFactory;
 import org.talend.designer.core.ui.editor.nodes.Node;
 import org.talend.designer.core.ui.editor.process.Process;
@@ -253,7 +258,7 @@ public class JavaProcessor extends AbstractJavaProcessor implements IJavaBreakpo
                 // for shadow process/data preview
                 this.talendJavaProject = TalendJavaProjectManager.getTempJavaProject();
                 if (GlobalServiceRegister.getDefault().isServiceRegistered(IRunProcessService.class)) {
-                    IRunProcessService service = (IRunProcessService) GlobalServiceRegister.getDefault()
+                    IRunProcessService service = GlobalServiceRegister.getDefault()
                             .getService(IRunProcessService.class);
                     if (service != null) {
                         service.updateLogFiles(talendJavaProject, true);
@@ -1579,6 +1584,12 @@ public class JavaProcessor extends AbstractJavaProcessor implements IJavaBreakpo
             MavenArtifact artifact = MavenUrlHelper.parseMvnUrl(module.getMavenUri(), true);
             if (artifact != null) {
                 String key = artifact.getGroupId() + ":" + artifact.getArtifactId();
+                if (artifact.getType() != null) {
+                    key = key + ":" + artifact.getType();
+                }
+                if (artifact.getClassifier() != null) {
+                    key = key + ":" + artifact.getClassifier();
+                }
                 ModuleNeeded checkedModule = keepModules.get(key);
                 if (checkedModule != null) {
                     MavenArtifact checkedArtifact = MavenUrlHelper.parseMvnUrl(checkedModule.getMavenUri(), true);
@@ -1753,11 +1764,32 @@ public class JavaProcessor extends AbstractJavaProcessor implements IJavaBreakpo
         String[] vmargs = null;
         try {
             // if not check or the value is empty, should use preference
+            boolean usePrefJVMArguments = false;
             if (string == null || "".equals(string)) { //$NON-NLS-1$
                 string = RunProcessPlugin.getDefault().getPreferenceStore().getString(RunProcessPrefsConstants.VMARGUMENTS);
+                usePrefJVMArguments = true;
             }
             String replaceAll = string.trim();
             List<String> vmList = new JobVMArgumentsUtil().readString(replaceAll);
+            //
+            String outputpath = getRuntimeLineageOutputpath();
+            if (outputpath != null) {
+                int usedPosition = -1;
+                for (int i = 0; i < vmList.size(); i++) {
+                    String vm = vmList.get(i);
+                    if (vm.startsWith(RuntimeLineageManager.RUNTIMELINEAGE_OUTPUT_PATH)) {
+                        usedPosition = i;
+                        break;
+                    }
+                }
+                if (usedPosition > -1) {
+                    if (usePrefJVMArguments) {
+                        vmList.set(usedPosition, outputpath);
+                    }
+                } else {
+                    vmList.add(outputpath);
+                }
+            }
             vmargs = vmList.toArray(new String[0]);
         } catch (Exception e) {
             LOGGER.debug(e.getMessage(), e);
@@ -1765,6 +1797,22 @@ public class JavaProcessor extends AbstractJavaProcessor implements IJavaBreakpo
             vmargs = JobVMArgumentsUtil.DEFAULT_JVM_ARGS;
         }
         return vmargs;
+    }
+
+    public String getRuntimeLineageOutputpath() {
+        if (NodeUtil.isJobUsingRuntimeLineage(process)) {
+            RuntimeLineageManager runtimeLineageManager = new RuntimeLineageManager();
+            String outputpath = RuntimeLineageManager.RUNTIMELINEAGE_OUTPUT_PATH;
+            String value = runtimeLineageManager.getOutputPath();
+            if (StringUtils.isNotBlank(value)) {
+                if (EnvironmentUtils.isWindowsSystem()) {
+                    return outputpath = outputpath + value.replaceAll("%20", " "); //$NON-NLS-1$ //$NON-NLS-2$
+                } else {
+                    return outputpath = outputpath + value;
+                }
+            }
+        }
+        return null;
     }
 
     private List<String> convertArgsToList(String[] args) {
@@ -1860,14 +1908,35 @@ public class JavaProcessor extends AbstractJavaProcessor implements IJavaBreakpo
                     launchManager.generateUniqueLaunchConfigurationNameFrom(this.getCodePath().lastSegment()));
             wc.setAttribute(IJavaLaunchConfigurationConstants.ATTR_PROJECT_NAME, projectName);
             wc.setAttribute(IJavaLaunchConfigurationConstants.ATTR_MAIN_TYPE_NAME, this.getMainClass());
-            wc.setAttribute(IJavaLaunchConfigurationConstants.ATTR_STOP_IN_MAIN, true);
             wc.setAttribute(IJavaLaunchConfigurationConstants.ATTR_PROGRAM_ARGUMENTS, CTX_ARG + context.getName() + parameterStr);
+            if (isRouteDebugging()) {
+                wc.setAttribute(Processor.DEBUG_ROUTE_ID_ARG, this.getProperty().getId());
+            } else {
+                wc.setAttribute(IJavaLaunchConfigurationConstants.ATTR_STOP_IN_MAIN, true);
+            }
             setupEncryptionFilePathParameter(wc);
+            
+            if (isRouteDebugging()) {
+                StringBuilder jmxArguments = new StringBuilder();
+                jmxArguments.append(wc.getAttribute(IJavaLaunchConfigurationConstants.ATTR_VM_ARGUMENTS, ""));
+                jmxArguments.append("\n-Dorg.apache.camel.jmx.createRmiConnector=True");
+                jmxArguments.append("\n-Dorg.apache.camel.jmx.rmiConnector.registryPort=1099");
+                jmxArguments.append("\n-Dorg.apache.camel.jmx.serviceUrlPath=/jmxrmi/camel/" + process.getName());
+                jmxArguments.append("\n-Dorg.apache.camel.jmx.mbeanObjectDomainName=org.apache.camel");
+                jmxArguments.append("\n-Dorg.apache.camel.jmx.usePlatformMBeanServer=True");
+                jmxArguments.append("\n-Dcom.sun.management.jmxremote.ssl=False");
+                jmxArguments.append("\n-Dcom.sun.management.jmxremote.authenticate=False");
+                wc.setAttribute(IJavaLaunchConfigurationConstants.ATTR_VM_ARGUMENTS, jmxArguments.toString());
+            }
             config = wc.doSave();
         }
         return config;
     }
 
+    private boolean isRouteDebugging() {
+        return ProcessorUtilities.isdebug() && ComponentCategory.CATEGORY_4_CAMEL.getName().equals(process.getComponentsType());
+    }
+    
     private void setupEncryptionFilePathParameter(ILaunchConfigurationWorkingCopy wc) throws CoreException {
         StringBuilder vmArguments = new StringBuilder();
         vmArguments.append(wc.getAttribute(IJavaLaunchConfigurationConstants.ATTR_VM_ARGUMENTS, ""));

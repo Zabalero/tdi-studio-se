@@ -28,9 +28,12 @@ import org.xml.sax.helpers.XMLReaderFactory;
 
 import java.io.File;
 import java.io.InputStream;
+import java.text.DateFormat;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Callable;
 import java.util.concurrent.FutureTask;
 
@@ -59,15 +62,11 @@ public class ExcelReader implements Callable {
 
     private List<Boolean> asRegexs = new ArrayList<Boolean>();
 
+    private final Map<Integer, DateFormat> columnDateFormats = new HashMap<>();
+
     DefaultTalendSheetContentsHandler sheetContentsHandler = null;
 
     private boolean includePhoneticRuns;
-
-    private String dynamicDatePattern;
-
-    private int startDynamicIndex = Integer.MIN_VALUE;
-
-    private int endDynamicIndex = Integer.MAX_VALUE;
 
     public ExcelReader() {
         cache = DataBufferCache.getInstance();
@@ -109,20 +108,12 @@ public class ExcelReader implements Callable {
         }
     }
 
+    public void addDateFormat(Integer columnIndex, DateFormat dateFormat) {
+        this.columnDateFormats.put(columnIndex, dateFormat);
+    }
+
     public void stopRead() {
         sheetContentsHandler.stop();
-    }
-
-    public void setDynamicDatePattern(String dynamicDatePattern) {
-        this.dynamicDatePattern = dynamicDatePattern;
-    }
-
-    public void setStartDynamicIndex(int startDynamicIndex) {
-        this.startDynamicIndex = startDynamicIndex;
-    }
-
-    public void setEndDynamicIndex(int endDynamicIndex) {
-        this.endDynamicIndex = endDynamicIndex;
     }
 
     public boolean isIncludePhoneticRuns() {
@@ -169,14 +160,13 @@ public class ExcelReader implements Callable {
 
             StylesTable styles = r.getStylesTable();
             ReadOnlySharedStringsTable strings = new ReadOnlySharedStringsTable(pkg, includePhoneticRuns);
-            sheetContentsHandler = new DefaultTalendSheetContentsHandler(cache, dynamicDatePattern, startDynamicIndex,
-                    endDynamicIndex);
+            sheetContentsHandler = new DefaultTalendSheetContentsHandler(cache);
             DataFormatter formatter = new DataFormatter();
             boolean formulasNotResults = false;
 
             XMLReader parser = XMLReaderFactory.createXMLReader();
             ContentHandler handler = new TalendXSSFSheetXMLHandler(styles, strings, sheetContentsHandler, formatter,
-                    formulasNotResults);
+                    formulasNotResults, columnDateFormats);
             parser.setContentHandler(handler);
 
             XSSFReader.SheetIterator sheets = (XSSFReader.SheetIterator) r.getSheetsData();

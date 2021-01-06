@@ -181,7 +181,6 @@ import org.talend.designer.core.ui.preferences.TalendDesignerPrefConstants;
 import org.talend.designer.core.ui.projectsetting.ProjectSettingManager;
 import org.talend.designer.core.ui.views.contexts.ContextsView;
 import org.talend.designer.core.ui.views.problems.Problems;
-import org.talend.designer.core.utils.ConnectionUtil;
 import org.talend.designer.core.utils.DesignerUtilities;
 import org.talend.designer.core.utils.DetectContextVarsUtils;
 import org.talend.designer.core.utils.JavaProcessUtil;
@@ -250,6 +249,8 @@ public class Process extends Element implements IProcess2, IGEFProcess, ILastVer
     public static final int PARALLEL_STATUS = 8;
 
     public static final int WINDOW_STATUS = 64;
+    
+    public static final int BREAKPOINT_ACTIVE_STATUS = 128; //for route debugging
 
     private Property property;
 
@@ -1398,7 +1399,8 @@ public class Process extends Element implements IProcess2, IGEFProcess, ILastVer
                         boolean canAddElementParameter = false;
                         boolean isActiveDatabase = false;
                         String paramName = pType.getName();
-                        if (EParameterName.ACTIVE_DATABASE_DELIMITED_IDENTIFIERS.getName().equals(paramName)) {
+                        if (EParameterName.ACTIVE_DATABASE_DELIMITED_IDENTIFIERS.getName().equals(paramName)
+                                || EParameterName.USE_ALIAS_IN_OUTPUT_TABLE.getName().equals(paramName)) {
                             canAddElementParameter = true;
                             isActiveDatabase = true;
                         }
@@ -3730,9 +3732,6 @@ public class Process extends Element implements IProcess2, IGEFProcess, ILastVer
             updataComponentParamName = EParameterName.UPDATE_COMPONENTS.getName();
             // }
             setPropertyValue(updataComponentParamName, Boolean.TRUE);
-        }
-        if (id.equals(EParameterName.DRIVER_JAR.getName()) || id.equals("DRIVER_JAR_IMPLICIT_CONTEXT")) {
-            ConnectionUtil.getDriverJar(value);
         }
         super.setPropertyValue(id, value);
     }

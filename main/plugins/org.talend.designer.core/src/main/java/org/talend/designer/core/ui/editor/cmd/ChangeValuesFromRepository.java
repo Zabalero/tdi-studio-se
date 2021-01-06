@@ -59,8 +59,6 @@ import org.talend.core.model.properties.ContextItem;
 import org.talend.core.model.properties.Item;
 import org.talend.core.model.properties.SAPConnectionItem;
 import org.talend.core.model.utils.TalendTextUtils;
-import org.talend.core.runtime.maven.MavenArtifact;
-import org.talend.core.runtime.maven.MavenUrlHelper;
 import org.talend.core.runtime.services.IGenericWizardService;
 import org.talend.core.service.IJsonFileService;
 import org.talend.core.utils.TalendQuoteUtils;
@@ -358,7 +356,8 @@ public class ChangeValuesFromRepository extends ChangeMetadataCommand {
                     param.setRepositoryValue(repositoryValue);
                     param.setRepositoryValueUsed(true);
                 }
-                if (connection instanceof DatabaseConnection && StringUtils.equals("MAPPING", param.getName())) {//$NON-NLS-1$
+                if (!isJDBCRepValue && connection instanceof DatabaseConnection
+                        && StringUtils.equals("MAPPING", param.getName())) {//$NON-NLS-1$
                     repositoryValue = param.getName();
                 }
                 if (repositoryValue == null
@@ -616,12 +615,7 @@ public class ChangeValuesFromRepository extends ChangeMetadataCommand {
                                         Map map = new HashMap();
                                         String driver = String.valueOf(((Map) value).get("drivers"));
                                         if (driver != null) {
-                                            MavenArtifact artifact = MavenUrlHelper
-                                                    .parseMvnUrl(TalendTextUtils.removeQuotes(driver));
-                                            if (artifact != null) {
-                                                driver = artifact.getFileName();
-                                            }
-                                            map.put("JAR_NAME", driver);
+                                            map.put("JAR_NAME", TalendTextUtils.removeQuotes(driver));
                                             newValue.add(map);
                                         }
                                     }
@@ -685,6 +679,8 @@ public class ChangeValuesFromRepository extends ChangeMetadataCommand {
 
                     if (param.isRepositoryValueUsed()) {
                         if (("GENERATION_MODE").equals(param.getName())) {
+                            param.setReadOnly(true);
+                        } else if (isJDBCRepValue && "MAPPING".equals(param.getName())) {
                             param.setReadOnly(true);
                         } else {
                             param.setReadOnly(false);

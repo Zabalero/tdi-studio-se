@@ -461,6 +461,10 @@ public abstract class AbstractTalendEditor extends GraphicalEditorWithFlyoutPale
         if (type == ZoomManager.class) {
             return getGraphicalViewer().getProperty(ZoomManager.class.toString());
         }
+        
+        if(type == ScrollingGraphicalViewer.class) {
+            return saveOutlinePicture((ScrollingGraphicalViewer) getGraphicalViewer());
+        }
 
         return super.getAdapter(type);
     }
@@ -1140,7 +1144,8 @@ public abstract class AbstractTalendEditor extends GraphicalEditorWithFlyoutPale
      *
      * @param viewer
      */
-    protected void saveOutlinePicture(ScrollingGraphicalViewer viewer) {
+    protected Map<String, Object> saveOutlinePicture(ScrollingGraphicalViewer viewer) {
+        Map<String,Object> results = new HashMap<String, Object>();
         GlobalConstant.generatingScreenShoot = true;
         LayerManager layerManager = (LayerManager) viewer.getEditPartRegistry().get(LayerManager.ID);
         // save image using swt
@@ -1157,18 +1162,19 @@ public abstract class AbstractTalendEditor extends GraphicalEditorWithFlyoutPale
         Graphics graphics = new SWTGraphics(gc);
         Point point = contentLayer.getBounds().getTopLeft();
         graphics.translate(-point.x, -point.y);
-        IProcess2 process = getProcess();
-        process.setPropertyValue(IProcess.SCREEN_OFFSET_X, String.valueOf(-point.x));
-        process.setPropertyValue(IProcess.SCREEN_OFFSET_Y, String.valueOf(-point.y));
+        results.put(IProcess.SCREEN_OFFSET_X, String.valueOf(-point.x));
+        results.put(IProcess.SCREEN_OFFSET_Y, String.valueOf(-point.y));
         backgroundLayer.paint(graphics);
         contentLayer.paint(graphics);
         graphics.dispose();
         gc.dispose();
-        process.getScreenshots().put("process", ImageUtils.saveImageToData(img));
+        results.put("process", ImageUtils.saveImageToData(img));
         img.dispose();
 
         // service.getProxyRepositoryFactory().refreshJobPictureFolder(outlinePicturePath);
         GlobalConstant.generatingScreenShoot = false;
+        
+        return results;
     }
 
     /**
@@ -1265,7 +1271,11 @@ public abstract class AbstractTalendEditor extends GraphicalEditorWithFlyoutPale
         // getGraphicalViewer().getControl().getDisplay().asyncExec(new Runnable() {
         //
         // public void run() {
-        saveOutlinePicture((ScrollingGraphicalViewer) getGraphicalViewer());
+        Map<String, Object> results = saveOutlinePicture((ScrollingGraphicalViewer) getGraphicalViewer());
+        IProcess2 process = getProcess();
+        process.setPropertyValue(IProcess.SCREEN_OFFSET_X, (String) results.get(IProcess.SCREEN_OFFSET_X));
+        process.setPropertyValue(IProcess.SCREEN_OFFSET_Y, (String) results.get(IProcess.SCREEN_OFFSET_Y));
+        process.getScreenshots().put("process", (byte[]) results.get("process"));
         // }
         //
         // });
@@ -1650,26 +1660,28 @@ public abstract class AbstractTalendEditor extends GraphicalEditorWithFlyoutPale
                 final StructuredSelection newSelection = (StructuredSelection) viewer.getSelection();
                 if (!newSelection.isEmpty() && newSelection.getFirstElement() instanceof TalendEntryEditPart) {
                     TalendEntryEditPart editPart = (TalendEntryEditPart) newSelection.getFirstElement();
-                    TalendCombinedTemplateCreationEntry entry =
-                            (TalendCombinedTemplateCreationEntry) editPart.getModel();
-                    IComponent newComponent = entry.getComponent();
-                    if (newComponent != null && newComponent instanceof StitchPseudoComponent) {
-                        if (newComponent.equals(previousComponent)) { // check if we are clicking on it for a 2nd time
-                            StitchPseudoComponent stitchPseudoComponent = (StitchPseudoComponent) newComponent;
-                            try {
-                                final URL compURL = new URL(stitchPseudoComponent.getConnectorURL()
-                                        + StitchDataLoaderConstants.getUTMParamSuffix());
-                                PlatformUI.getWorkbench().getBrowserSupport().getExternalBrowser().openURL(compURL);
-                            } catch (PartInitException | MalformedURLException e) {
-                                ExceptionHandler.process(e);
+                    if(editPart.getModel() instanceof TalendCombinedTemplateCreationEntry) {
+                        TalendCombinedTemplateCreationEntry entry =
+                                (TalendCombinedTemplateCreationEntry) editPart.getModel();
+                        IComponent newComponent = entry.getComponent();
+                        if (newComponent != null && newComponent instanceof StitchPseudoComponent) {
+                            if (newComponent.equals(previousComponent)) { // check if we are clicking on it for a 2nd time
+                                StitchPseudoComponent stitchPseudoComponent = (StitchPseudoComponent) newComponent;
+                                try {
+                                    final URL compURL = new URL(stitchPseudoComponent.getConnectorURL()
+                                            + StitchDataLoaderConstants.getUTMParamSuffix());
+                                    PlatformUI.getWorkbench().getBrowserSupport().getExternalBrowser().openURL(compURL);
+                                } catch (PartInitException | MalformedURLException e) {
+                                    ExceptionHandler.process(e);
+                                }
+                                previousComponent = null; // remove the registered selection
+                            } else { // if it's the first time selecting a stitch connector
+                                previousComponent = newComponent; // register the first click
                             }
+                            super.mouseUp(mouseEvent, viewer); // simulate the release of button to avoid dropping on canvas
+                        } else { // user click at another component after a stitch component
                             previousComponent = null; // remove the registered selection
-                        } else { // if it's the first time selecting a stitch connector
-                            previousComponent = newComponent; // register the first click
                         }
-                        super.mouseUp(mouseEvent, viewer); // simulate the release of button to avoid dropping on canvas
-                    } else { // user click at another component after a stitch component
-                        previousComponent = null; // remove the registered selection
                     }
                 } else { // user clicks at somewhere outside the palette: the canvas for instance
                     previousComponent = null; // remove the registered selection

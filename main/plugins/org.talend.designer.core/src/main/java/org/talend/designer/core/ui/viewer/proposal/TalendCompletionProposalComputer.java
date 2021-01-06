@@ -150,35 +150,7 @@ public class TalendCompletionProposalComputer implements IJavaCompletionProposal
             replacementLength = prefix.length();
         }
 
-        // Proposals based on process context
-        List<IContextParameter> ctxParams = process.getContextManager().getDefaultContext().getContextParameterList();
-
-        for (IContextParameter ctxParam : ctxParams) {
-            String display = CONTEXT_PREFIX + ctxParam.getName();
-            String code = getContextContent(ctxParam);
-            String description = getContextDescription(ctxParam, display);
-
-            String ctxName = ctxParam.getName();
-
-            if (prefix.equals("") || display.startsWith(prefix)) { //$NON-NLS-1$
-                TalendCompletionProposal proposal = new TalendCompletionProposal(code, offset - prefix.length(),
-                        replacementLength, code.length(), ImageProvider.getImage(ECoreImage.CONTEXT_ICON), display, null,
-                        description);
-                proposal.setType(TalendCompletionProposal.CONTEXT);
-                proposals.add(proposal);
-            } else if (prefix.equals("") || ctxName.startsWith(prefix)) { //$NON-NLS-1$
-                if (code.startsWith(CONTEXT_PREFIX)) {
-                    code = code.replaceFirst(CONTEXT_PREFIX, "");
-                }
-
-                TalendCompletionProposal proposal = new TalendCompletionProposal(code, offset - prefix.length(),
-                        replacementLength, code.length(), ImageProvider.getImage(ECoreImage.CONTEXT_ICON), display, null,
-                        description);
-                proposal.setType(TalendCompletionProposal.CONTEXT);
-                proposals.add(proposal);
-            }
-
-        }
+        this.addContextProposal(process, prefix, replacementLength, proposals, offset);
 
         // Proposals based on global variables
         List<? extends INode> nodes = process.getGraphicalNodes();
@@ -262,13 +234,14 @@ public class TalendCompletionProposalComputer implements IJavaCompletionProposal
         }
 
         String message = "<b>" + display + "</b><br><br>" //$NON-NLS-1$ //$NON-NLS-2$
-                + Messages.getString("ContextParameterProposal.Description") + "<br>"; //$NON-NLS-1$ //$NON-NLS-2$
-        message += Messages.getString("ContextParameterProposal.ContextVariable") + "<br><br>"; //$NON-NLS-1$ //$NON-NLS-2$
-        message += Messages.getString("ContextParameterProposal.Type") + "<br><br>"; //$NON-NLS-1$ //$NON-NLS-2$
-        message += Messages.getString("ContextParameterProposal.VariableName"); //$NON-NLS-1$
+                + Messages.getString("ContextParameterProposal.Description.v1") + "<br>"; //$NON-NLS-1$ //$NON-NLS-2$
+        message += Messages.getString("ContextParameterProposal.ContextVariable.v1") + "<br><br>"; //$NON-NLS-1$ //$NON-NLS-2$
+        message += Messages.getString("ContextParameterProposal.Type.v1") + "<br><br>"; //$NON-NLS-1$ //$NON-NLS-2$
+        message += Messages.getString("ContextParameterProposal.VariableName.v1"); //$NON-NLS-1$
 
         MessageFormat format = new MessageFormat(message);
-        Object[] args = new Object[] { desc, contextParameter.getType(), getContextContent(contextParameter) };
+        Object[] args = new Object[] { desc, contextParameter.getContext().getName(), contextParameter.getType(),
+                contextParameter.getValue() };
         return format.format(args);
     }
 
@@ -355,4 +328,36 @@ public class TalendCompletionProposalComputer implements IJavaCompletionProposal
     public void sessionStarted() {
     }
 
+    public void addContextProposal(IProcess process, String prefix, int replacementLength, List<ICompletionProposal> proposals,
+            int offset) {
+        // Proposals based on process context
+        List<IContextParameter> ctxParams = process.getContextManager().getDefaultContext().getContextParameterList();
+
+        for (IContextParameter ctxParam : ctxParams) {
+            String display = CONTEXT_PREFIX + ctxParam.getName();
+            String code = getContextContent(ctxParam);
+            String description = getContextDescription(ctxParam, display);
+
+            String ctxName = ctxParam.getName();
+
+            if (prefix.equals("") || display.startsWith(prefix)) { //$NON-NLS-1$
+                TalendCompletionProposal proposal = new TalendCompletionProposal(code, offset - prefix.length(),
+                        replacementLength, code.length(), ImageProvider.getImage(ECoreImage.CONTEXT_ICON), display, null,
+                        description);
+                proposal.setType(TalendCompletionProposal.CONTEXT);
+                proposals.add(proposal);
+            } else if (prefix.equals("") || ctxName.startsWith(prefix)) { //$NON-NLS-1$
+                if (code.startsWith(CONTEXT_PREFIX)) {
+                    code = code.replaceFirst(CONTEXT_PREFIX, "");
+                }
+
+                TalendCompletionProposal proposal = new TalendCompletionProposal(code, offset - prefix.length(),
+                        replacementLength, code.length(), ImageProvider.getImage(ECoreImage.CONTEXT_ICON), display, null,
+                        description);
+                proposal.setType(TalendCompletionProposal.CONTEXT);
+                proposals.add(proposal);
+            }
+
+        }
+    }
 }

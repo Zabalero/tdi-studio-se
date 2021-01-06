@@ -47,6 +47,7 @@ import org.talend.commons.ui.runtime.exception.ExceptionHandler;
 import org.talend.commons.ui.runtime.image.ImageUtils;
 import org.talend.commons.ui.runtime.swt.tableviewer.selection.ILineSelectionListener;
 import org.talend.commons.ui.runtime.swt.tableviewer.selection.LineSelectionEvent;
+import org.talend.commons.ui.runtime.ws.WindowSystem;
 import org.talend.commons.ui.swt.tableviewer.IModifiedBeanListener;
 import org.talend.commons.ui.swt.tableviewer.ModifiedBeanEvent;
 import org.talend.commons.ui.swt.tableviewer.TableViewerCreator;
@@ -86,6 +87,7 @@ import org.talend.designer.dbmap.model.tableentry.OutputColumnTableEntry;
 import org.talend.designer.dbmap.model.tableentry.TableEntryLocation;
 import org.talend.designer.dbmap.ui.MapperUI;
 import org.talend.designer.dbmap.ui.commands.DataMapTableViewSelectedCommand;
+import org.talend.designer.dbmap.ui.dialog.PropertySetDialog;
 import org.talend.designer.dbmap.ui.tabs.TabFolderEditors;
 import org.talend.designer.dbmap.ui.visualmap.TableEntryProperties;
 import org.talend.designer.dbmap.ui.visualmap.link.Link;
@@ -242,7 +244,7 @@ public class UIManager extends AbstractUIManager {
                         if (event.index != null) {
                             int index = event.index;
                             for (IMetadataColumn metadataColumn : metadataColumns) {
-                                addColumn(metadataColumn, dataMapTableView, index);
+                                addColumn(metadataColumn, dataMapTableView, index++);
                             }
                         } else if (event.indicesTarget != null) {
                             List<Integer> indicesTarget = event.indicesTarget;
@@ -372,6 +374,7 @@ public class UIManager extends AbstractUIManager {
         ToolbarZone toolbar = null;
         if (currentZone == Zone.INPUTS) {
             toolbar = getInputsZone().getToolbar();
+            ((ToolbarInputZone) toolbar).setEnabledRenameAliasButton(currentSelectedInputTableView != null);
             ((ToolbarInputZone) toolbar).setEnabledRemoveAliasButton(currentSelectedInputTableView != null);
             toolbar.setEnabledMinimizeTablesButton(getInputsTablesView().size() > 0);
         } else if (currentZone == Zone.OUTPUTS) {
@@ -894,6 +897,12 @@ public class UIManager extends AbstractUIManager {
 
     public Point convertPointToReferenceOrigin(final Composite referenceComposite, Point point, Composite child) {
         Point returnedPoint = new Point(point.x, point.y);
+        if (WindowSystem.isBigSurOrLater()) {
+            int headerHeight = (child instanceof DataMapTableView) ? ((DataMapTableView) child).getHeaderHeight() : 0;
+            if (returnedPoint.y < headerHeight) {
+                returnedPoint.y = headerHeight;
+            }
+        }
         while (child != referenceComposite) {
             Rectangle bounds = child.getBounds();
             child = child.getParent();
@@ -980,6 +989,13 @@ public class UIManager extends AbstractUIManager {
      */
     public ParseExpressionResult parseExpression(String expression, ITableEntry currentModifiedITableEntry,
             boolean linkMustHaveSelectedState, boolean checkInputKeyAutomatically, boolean inputExpressionAppliedOrCanceled) {
+        return parseExpression(expression, currentModifiedITableEntry, linkMustHaveSelectedState, checkInputKeyAutomatically,
+                inputExpressionAppliedOrCanceled, false);
+    }
+
+    public ParseExpressionResult parseExpression(String expression, ITableEntry currentModifiedITableEntry,
+            boolean linkMustHaveSelectedState, boolean checkInputKeyAutomatically, boolean inputExpressionAppliedOrCanceled,
+            boolean renamed) {
 
         DataMapTableView dataMapTableView = mapperManager.retrieveDataMapTableView(currentModifiedITableEntry);
         boolean linkHasBeenAdded = false;
@@ -1012,13 +1028,14 @@ public class UIManager extends AbstractUIManager {
                 alreadyProcessed.add(location);
             }
         }
-
-        Set<IMapperLink> targets = mapperManager.getGraphicalLinksFromTarget(currentModifiedITableEntry);
-        Set<IMapperLink> linksFromTarget = new HashSet<IMapperLink>(targets);
-        for (IMapperLink link : linksFromTarget) {
-            if (sourcesForTargetToDelete.contains(link.getPointLinkDescriptor1().getTableEntry())) {
-                mapperManager.removeLink(link, link.getPointLinkDescriptor2().getTableEntry());
-                linkHasBeenRemoved = true;
+        if (!renamed) {
+            Set<IMapperLink> targets = mapperManager.getGraphicalLinksFromTarget(currentModifiedITableEntry);
+            Set<IMapperLink> linksFromTarget = new HashSet<IMapperLink>(targets);
+            for (IMapperLink link : linksFromTarget) {
+                if (sourcesForTargetToDelete.contains(link.getPointLinkDescriptor1().getTableEntry())) {
+                    mapperManager.removeLink(link, link.getPointLinkDescriptor2().getTableEntry());
+                    linkHasBeenRemoved = true;
+                }
             }
         }
         mapperManager.orderLinks();
@@ -1105,7 +1122,8 @@ public class UIManager extends AbstractUIManager {
         TableEntryLocation previousLocation = new TableEntryLocation(currentModifiedITableEntry.getParentName(),
                 previousColumnName);
         TableEntryLocation newLocation = new TableEntryLocation(currentModifiedITableEntry.getParentName(), newColumnName);
-        mapperManager.replacePreviousLocationInAllExpressions(previousLocation, newLocation);
+        mapperManager.replacePreviousLocationInAllExpressions(previousLocation, newLocation, false);
+        mapperManager.getUiManager().refreshBackground(false, false);
         refreshSqlExpression();
 
         if (!renamingDependentEntries) {
@@ -1395,6 +1413,11 @@ public class UIManager extends AbstractUIManager {
      */
     public Display getDisplay() {
         return getMapperContainer().getDisplay();
+    }
+
+    @Override
+    public void openPropertySetDialog() {
+        new PropertySetDialog(getShell(), mapperManager).open();
     }
 
     /**

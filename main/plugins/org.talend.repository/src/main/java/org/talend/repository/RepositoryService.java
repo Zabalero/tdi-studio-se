@@ -13,6 +13,7 @@
 package org.talend.repository;
 
 import java.beans.PropertyChangeEvent;
+import java.nio.charset.StandardCharsets;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -67,6 +68,7 @@ import org.talend.core.language.ECodeLanguage;
 import org.talend.core.model.action.DisableLanguageActions;
 import org.talend.core.model.components.IComponentsFactory;
 import org.talend.core.model.general.ConnectionBean;
+import org.talend.core.model.general.ModuleNeeded;
 import org.talend.core.model.general.Project;
 import org.talend.core.model.metadata.IMetadataConnection;
 import org.talend.core.model.metadata.builder.connection.DatabaseConnection;
@@ -81,6 +83,7 @@ import org.talend.core.model.process.IElementParameter;
 import org.talend.core.model.process.INode;
 import org.talend.core.model.properties.ContextItem;
 import org.talend.core.model.properties.Item;
+import org.talend.core.model.properties.PropertiesFactory;
 import org.talend.core.model.properties.RulesItem;
 import org.talend.core.model.properties.SAPConnectionItem;
 import org.talend.core.model.properties.SQLPatternItem;
@@ -102,6 +105,8 @@ import org.talend.core.repository.model.RepositoryFactoryProvider;
 import org.talend.core.repository.model.repositoryObject.SalesforceModuleRepositoryObject;
 import org.talend.core.repository.utils.ProjectHelper;
 import org.talend.core.repository.utils.RepositoryPathProvider;
+import org.talend.core.runtime.util.SharedStudioUtils;
+import org.talend.core.services.ICoreTisService;
 import org.talend.core.services.IGITProviderService;
 import org.talend.core.services.ISVNProviderService;
 import org.talend.core.ui.branding.IBrandingService;
@@ -133,6 +138,8 @@ import org.talend.repository.ui.login.LoginHelper;
 import org.talend.repository.ui.login.connections.ConnectionUserPerReader;
 import org.talend.repository.ui.login.connections.network.NetworkErrorRetryDialog;
 import org.talend.repository.ui.utils.ColumnNameValidator;
+import org.talend.repository.ui.utils.Log4jPrefsSettingManager;
+import org.talend.repository.ui.utils.UpdateLog4jJarUtils;
 import org.talend.repository.ui.views.IRepositoryView;
 import org.talend.utils.json.JSONException;
 import org.talend.utils.json.JSONObject;
@@ -318,6 +325,28 @@ public class RepositoryService implements IRepositoryService, IRepositoryContext
             logged = LoginHelper.getInstance().loginAuto();
         }
         if (!logged) {
+            if (ArrayUtils.contains(Platform.getApplicationArgs(), EclipseCommandLine.LOGIN_ONLINE_UPDATE) && !SharedStudioUtils.isSharedStudioMode()) {
+                ICoreTisService tisService = ICoreTisService.get();
+                if (tisService != null) {
+                    LoginHelper loginHelper = LoginHelper.getInstance();
+                    ConnectionBean connBean = loginHelper.getCurrentSelectedConnBean();
+                    try {
+                        User user = PropertiesFactory.eINSTANCE.createUser();
+                        user.setLogin(connBean.getUser());
+                        user.setPassword(connBean.getPassword().getBytes(StandardCharsets.UTF_8));
+                        LoginHelper.setRepositoryContextInContext(connBean, user, null, null);
+                        tisService.downLoadAndInstallUpdates(connBean.getUser(), connBean.getPassword(),
+                                LoginHelper.getAdminURL(connBean));
+                        tisService.setNeedResartAfterUpdate(true);
+                        LoginHelper.isRestart = true;
+                        EclipseCommandLine.updateOrCreateExitDataPropertyWithCommand(EclipseCommandLine.LOGIN_ONLINE_UPDATE, null,
+                                true, true);
+                        return true;
+                    } catch (Throwable e) {
+                        ExceptionHandler.process(e);
+                    }
+                }
+            }
             LoginDialogV2 loginDialog = new LoginDialogV2(shell);
             logged = (loginDialog.open() == LoginDialogV2.OK);
         }
@@ -825,7 +854,7 @@ public class RepositoryService implements IRepositoryService, IRepositoryContext
     }
 
     @Override
-    public List<String> getProjectBranch(Project project) {
+    public List<String> getProjectBranch(Project project, boolean onlyLocalIfPossible) {
         List<String> branchesList = new ArrayList<String>();
         if (!isInitedProviderService) {
             initProviderService();
@@ -840,7 +869,7 @@ public class RepositoryService implements IRepositoryService, IRepositoryContext
                     }
                 }
                 if (!project.isLocal() && gitProviderService != null && gitProviderService.isGITProject(project)) {
-                    branchesList.addAll(Arrays.asList(gitProviderService.getBranchList(project)));
+                    branchesList.addAll(Arrays.asList(gitProviderService.getBranchList(project, onlyLocalIfPossible)));
                 }
             } catch (PersistenceException e) {
                 CommonExceptionHandler.process(e);
@@ -970,4 +999,15 @@ public class RepositoryService implements IRepositoryService, IRepositoryContext
             ((RepoViewCommonNavigator) repView).setShouldCheckRepositoryDirty(shouldFlag);
         }
     }
+
+    @Override
+    public boolean isProjectLevelLog4j2() {
+        return Log4jPrefsSettingManager.getInstance().isSelectLog4j2();
+    }
+
+    @Override
+    public List<ModuleNeeded> getLog4j2Modules() {
+        return UpdateLog4jJarUtils.getLog4j2Modules();
+    }
+
 }

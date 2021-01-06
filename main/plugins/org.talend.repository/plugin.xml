@@ -1258,6 +1258,14 @@
              name="Clean all folders from project"
              version="5.1.2">
        </projecttask>
+        <projecttask
+             beforeLogon="true"
+             breaks="7.4.1"
+             class="org.talend.repository.model.migration.RemoveMetadataInPomsFolder"
+             id="org.talend.repository.model.migration.RemoveMetadataInPomsFolder"
+             name="Clean all metadata in poms folder"
+             version="7.4.1">
+       </projecttask>
        <projecttask
              beforeLogon="true"
              breaks="5.1.1"
@@ -3320,15 +3328,6 @@
               version="7.3.1">
         </projecttask>
         <projecttask
-              beforeLogon="false"
-              breaks="7.3.0"
-              class="org.talend.repository.model.migration.spark.UpdateDatesPatternAccordingToDeletedTimestampOption"
-              description="change schema pattern according to deleted option"
-              id="org.talend.repository.model.migration.spark.UpdateDatesPatternAccordingToDeletedTimestampOption"
-              name="UpdateDatesPatternAccordingToDeletedTimestampOption"
-              version="7.3.1">                     
-       </projecttask>
-       <projecttask
               beforeLogon="true"
               breaks="7.3.0"
               class="org.talend.repository.model.migration.RemovePigudfModulesMigrationTask"
@@ -3417,6 +3416,132 @@
                description="Change default value of auth type in BigQuery components which use GCS"
                id="org.talend.repository.model.migration.BigQuerySetDefaultAuthTypeForGSMigrationTask"
                name="BigQuerySetDefaultAuthTypeForGSMigrationTask"
+               version="7.3.1">
+       </projecttask>
+       <projecttask
+              beforeLogon="false"
+              breaks="7.3.0"
+              class="org.talend.repository.model.migration.spark.UpdateSeparatorAndEscapeForDatasetAPI"
+              description="change separator and escape to work with dataset API"
+              id="org.talend.repository.model.migration.spark.UpdateSeparatorAndEscapeForDatasetAPI"
+              name="UpdateSeparatorAndEscapeForDatasetAPI"
+              version="7.3.1">
+        </projecttask>
+        <projecttask
+              beforeLogon="true"
+              breaks="7.3.1"
+              class="org.talend.repository.model.migration.spark.RefactoDeltaMergeOption"
+              description="refacto for deltalake output xml"
+              id="org.talend.repository.model.migration.spark.RefactoDeltaMergeOption"
+              name="RefactoDeltaMergeOption"
+              version="7.3.1">                     
+       </projecttask>
+       <projecttask
+              beforeLogon="false"
+              breaks="6.4.0"
+              class="org.talend.repository.model.migration.CheckAzureBlobStorageKeepRemoteDirJavajetToTCOMPv0"
+              description="Add checkbox with not default value for Javajet component to be migrated for TCOMPv0"
+              id="org.talend.repository.model.migration.CheckAzureBlobStorageKeepRemoteDirJavajetToTCOMPv0"
+              name="CheckAzureBlobStorageKeepRemoteDirJavajetToTCOMPv0"
+              version="7.3.1">
+       </projecttask>
+       <projecttask
+              beforeLogon="false"
+              breaks="7.3.0"
+              class="org.talend.repository.model.migration.SetDefaultPartSizeForTGSPutMigrationTask"
+              description="Set default value of part size for Google Storage Put component to 0"
+              id="org.talend.repository.model.migration.SetDefaultPartSizeForTGSPutMigrationTask"
+              name="SetDefaultPartSizeForTGSPutMigrationTask"
+              version="7.3.1">
+       </projecttask>
+       <projecttask
+              beforeLogon="false"
+              breaks="7.2.0"
+              class="org.talend.repository.model.migration.spark.SetGlobalTimestampOptionForPreviousVersions"
+              description="set global timestamp option to true for older studio"
+              id="org.talend.repository.model.migration.spark.SetGlobalTimestampOptionForPreviousVersions"
+              name="SetGlobalTimestampOptionForPreviousVersions"
+              version="7.2.1">
+       </projecttask>
+       <projecttask
+               beforeLogon="false"
+               breaks="7.3.0"
+               class="org.talend.repository.model.migration.TeradataTPTAddDatabaseNameToOptionalTablesMigrationTask"
+               description="Append database name to optional TPT attributes Log and Error tables"
+               id="org.talend.repository.model.migration.TeradataTPTAddDatabaseNameToOptionalTablesMigrationTask"
+               name="TeradataTPTAddDatabaseNameToOptionalTablesMigrationTask"
+               version="7.3.1">
+       </projecttask>
+	   <projecttask
+               beforeLogon="false"
+               breaks="7.3.0"
+               class="org.talend.repository.model.migration.UncheckTrustAllMigrationTask"
+               description="Uncheck Trust all server in tFileFetch"
+               id="org.talend.repository.model.migration.UncheckTrustAllMigrationTask"
+               name="UncheckTrustAllMigrationTask"
+               version="7.3.1">
+       </projecttask>
+       <projecttask
+              beforeLogon="false"
+              breaks="7.4.0"
+              class="org.talend.repository.model.migration.EnabletPersonatorAddressBasicSettingTask"
+              description="Enable the Address Basic Setting of tPersonator"
+              id="org.talend.repository.model.migration.EnabletPersonatorAddressBasicSettingTask"
+              name="EnabletPersonatorAddressBasicSettingTask"
+              version="7.4.1">
+       </projecttask>
+       <projecttask
+              beforeLogon="true"
+              breaks="7.3.0"
+              class="org.talend.repository.model.migration.RemoveSnapshotJarMigrationTask"
+              id="org.talend.repository.model.migration.RemoveSnapshotJarMigrationTask"
+              description="Regnerate all poms"
+              name="RemoveSnapshotJarMigrationTask"
+              version="7.3.1">
+       </projecttask>
+       <projecttask
+              beforeLogon="false"
+              breaks="7.4.0"
+              class="org.talend.repository.model.migration.spark.SetDatasetCheckBoxGlobalOption"
+              description="set global use dataset api checkbox to false for previous versions"
+              id="org.talend.repository.model.migration.spark.SetDatasetCheckBoxGlobalOption"
+              name="SetDatasetCheckBoxGlobalOption"
+              version="7.4.1">
+       </projecttask>
+       <projecttask
+              beforeLogon="false"
+              breaks="7.4.0"
+              class="org.talend.repository.model.migration.ChangeELTPostgresDbVersionMigrationTask"
+              description="Change the tELTPostgresqlMap DB_VERSION to old version if DB_VERSION is not set"
+              id="org.talend.repository.model.migration.ChangeELTPostgresDbVersionMigrationTask"
+              name="ChangeELTPostgresDbVersionMigrationTask"
+              version="7.4.1">
+       </projecttask>
+       <projecttask
+               beforeLogon="false"
+               breaks="7.4.0"
+               class="org.talend.repository.model.migration.SpecialUpdateELTDefaultNameMigrationTask"
+               description="Update ELT default table name or schema name"
+               id="org.talend.repository.model.migration.SpecialUpdateELTDefaultNameMigrationTask"
+               name="SpecialUpdateELTDefaultNameMigrationTask"
+               version="7.4.1">
+       </projecttask>
+       <projecttask
+             beforeLogon="false"
+             breaks="7.4.0"
+             class="org.talend.repository.model.migration.ChangeTMatchGroupConfidentWeightTypeTask"
+             description="change the type of Confident Weight and keep the part of integer only"
+             id="org.talend.repository.model.migration.ChangeTMatchGroupConfidentWeightTypeTask"
+             name="ChangeTMatchGroupConfidentWeightTypeTask"
+             version="7.4.1">
+       </projecttask>
+   	   <projecttask
+               beforeLogon="false"
+               breaks="7.3.0"
+               class="org.talend.repository.model.migration.UncheckUseExtraParameterMigrationTask"
+               description="Uncheck Use Extra Parameters in tGPGDecrypt"
+               id="org.talend.repository.model.migration.UncheckUseExtraParameterMigrationTask"
+               name="UncheckUseExtraParameterMigrationTask"
                version="7.3.1">
        </projecttask>
    </extension>

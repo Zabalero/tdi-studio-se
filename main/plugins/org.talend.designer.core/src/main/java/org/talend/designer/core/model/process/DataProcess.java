@@ -1874,11 +1874,6 @@ public class DataProcess implements IGeneratingProcess {
             for (DataNode node : statsAndLogsNodeList) {
                 if (node.getUniqueName().equals(StatsAndLogsManager.CONNECTION_UID)) {
                     connNode = node;
-                    IElementParameter parameter = connNode.getElementParameter("connection.driverTable");
-                    if (parameter != null) {
-                        Object repValue = parameter.getValue();
-                        ConnectionUtil.resetDriverValue(repValue);
-                    }
                     break;
                 }
             }
@@ -1963,7 +1958,7 @@ public class DataProcess implements IGeneratingProcess {
         }
         
         if (duplicatedProcess.getComponentsType().equals(ComponentCategory.CATEGORY_4_DI.getName()) 
-        		&& PluginChecker.isTIS() && !Boolean.getBoolean("deactivate_extended_component_log") && !isJoblet) {
+        		&& PluginChecker.isTIS() && !isJoblet) {
         	final String talendJobLogComponent = "tJobStructureCatcher";
             final String uid4TalendJobLogComponent = "talendJobLog";
         	IComponent jobStructComponent = ComponentsFactoryProvider.getInstance().get(talendJobLogComponent, ComponentCategory.CATEGORY_4_DI.getName());
