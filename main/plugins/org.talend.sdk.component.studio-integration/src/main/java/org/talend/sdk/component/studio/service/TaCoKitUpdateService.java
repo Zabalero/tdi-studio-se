@@ -176,7 +176,6 @@ public class TaCoKitUpdateService implements ITaCoKitUpdateService {
                                     Messages.getString("TaCoKitUpdateService.progress.installingFeatures.current.cantInstall", //$NON-NLS-1$
                                             carFeature.getName()));
                         }
-
                     }
                 } catch (InterruptedException e) {
                     throw e;
