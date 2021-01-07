@@ -167,8 +167,12 @@ public class TaCoKitUpdateService implements ITaCoKitUpdateService {
                             break;
                         }
                     } else {
-                        throw new Exception(Messages.getString(
-                                "TaCoKitUpdateService.progress.installingFeatures.current.cantInstall", carFeature.getName())); //$NON-NLS-1$
+                        if (!InstallationStatus.Status.INSTALLED.equals(carFeature.getInstallationStatus(monitor).getStatus())) {
+                            throw new Exception(
+                                    Messages.getString("TaCoKitUpdateService.progress.installingFeatures.current.cantInstall", //$NON-NLS-1$
+                                            carFeature.getName()));
+                        }
+
                     }
                 } catch (InterruptedException e) {
                     throw e;
