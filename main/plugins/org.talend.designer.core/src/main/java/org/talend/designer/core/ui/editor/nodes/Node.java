@@ -4157,7 +4157,7 @@ public class Node extends Element implements IGraphicalNode {
                             String sourceType = column.getType();
                             String typevalue = column.getTalendType();
                             String currentDbmsId = outputMeta.getDbms();
-                            if (!typevalue.equals("id_Dynamic") && currentDbmsId != null //$NON-NLS-1$
+                            if (!typevalue.equals("id_Dynamic") && currentDbmsId != null && isShowDBTypeColumn(node)//$NON-NLS-1$
                                     && !TypesManager.checkDBType(currentDbmsId, typevalue, sourceType)) {
                                 String errorMessage = "the schema's dbType not correct for this component"; //$NON-NLS-1$
                                 Problems.add(ProblemStatus.WARNING, this, errorMessage);
@@ -4237,7 +4237,7 @@ public class Node extends Element implements IGraphicalNode {
                         String sourceType = column.getType();
                         String typevalue = column.getTalendType();
                         String currentDbmsId = outputMeta.getDbms();
-                        if (!typevalue.equals("id_Dynamic") && currentDbmsId != null //$NON-NLS-1$
+                        if (!typevalue.equals("id_Dynamic") && currentDbmsId != null && isShowDBTypeColumn(this)//$NON-NLS-1$
                                 && !TypesManager.checkDBType(currentDbmsId, typevalue, sourceType)) {
                             String errorMessage = "the schema's dbType not correct for this component"; //$NON-NLS-1$
                             Problems.add(ProblemStatus.WARNING, this, errorMessage);
