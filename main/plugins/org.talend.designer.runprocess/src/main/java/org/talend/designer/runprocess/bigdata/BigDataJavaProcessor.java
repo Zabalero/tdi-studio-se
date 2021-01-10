@@ -37,6 +37,7 @@ import org.talend.core.model.process.ProcessUtils;
 import org.talend.core.model.properties.ProcessItem;
 import org.talend.core.model.properties.Property;
 import org.talend.core.model.repository.ERepositoryObjectType;
+import org.talend.core.model.routines.CodesJarInfo;
 import org.talend.core.runtime.maven.MavenArtifact;
 import org.talend.core.runtime.maven.MavenConstants;
 import org.talend.core.runtime.maven.MavenUrlHelper;
@@ -311,10 +312,11 @@ public abstract class BigDataJavaProcessor extends MavenJavaProcessor implements
                 EList<RoutinesParameterType> routinesParameter = ((ProcessItem) getProperty().getItem()).getProcess()
                         .getParameters().getRoutinesParameter();
                 routinesParameter.stream().filter(r -> r.getType() != null).forEach(r -> {
-                    Property property = CodesJarResourceCache.getCodesJarById(r.getId());
-                    if (ProjectManager.getInstance().isInCurrentMainProject(property)) {
+                    CodesJarInfo info = CodesJarResourceCache.getCodesJarById(r.getId());
+                    Property property = info.getProperty();
+                    if (info.isInCurrentMainProject()) {
                         ITalendProcessJavaProject codesJarProject = TalendJavaProjectManager
-                                .getTalendCodesJarJavaProject(property);
+                                .getTalendCodesJarJavaProject(info);
                         IFile codesJarFile = codesJarProject.getTargetFolder().getFile(property.getLabel().toLowerCase() + "-" //$NON-NLS-1$
                                 + PomIdsHelper.getCodesJarVersion() + FileExtensions.JAR_FILE_SUFFIX);
                         libJars.append(codesJarFile.getLocation().toPortableString() + ","); //$NON-NLS-1$

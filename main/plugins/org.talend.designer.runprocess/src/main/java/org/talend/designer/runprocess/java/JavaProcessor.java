@@ -122,6 +122,7 @@ import org.talend.core.model.properties.JobletProcessItem;
 import org.talend.core.model.properties.ProcessItem;
 import org.talend.core.model.properties.Property;
 import org.talend.core.model.repository.ERepositoryObjectType;
+import org.talend.core.model.routines.CodesJarInfo;
 import org.talend.core.model.runprocess.IJavaProcessorStates;
 import org.talend.core.model.utils.JavaResourcesHelper;
 import org.talend.core.model.utils.NodeUtil;
@@ -1530,9 +1531,10 @@ public class JavaProcessor extends AbstractJavaProcessor implements IJavaBreakpo
         }
         if (routinesParameter != null) {
             routinesParameter.stream().filter(r -> r.getType() != null).forEach(r -> {
-                Property property = CodesJarResourceCache.getCodesJarById(r.getId());
-                if (ProjectManager.getInstance().isInCurrentMainProject(property)) {
-                    ITalendProcessJavaProject codesJarProject = TalendJavaProjectManager.getTalendCodesJarJavaProject(property);
+                CodesJarInfo info = CodesJarResourceCache.getCodesJarById(r.getId());
+                Property property = info.getProperty();
+                if (info.isInCurrentMainProject()) {
+                    ITalendProcessJavaProject codesJarProject = TalendJavaProjectManager.getTalendCodesJarJavaProject(info);
                     IPath codesJarOutputPath = codesJarProject.getOutputFolder().getLocation();
                     classPaths.add(getClassPath(codesJarOutputPath));
                 } else {
