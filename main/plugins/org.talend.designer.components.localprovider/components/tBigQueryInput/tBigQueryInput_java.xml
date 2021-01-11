@@ -224,6 +224,9 @@
 		<IMPORT NAME="gax-1.27.0.jar" MODULE="gax-1.27.0.jar" MVN="mvn:com.google.api/gax/1.27.0" REQUIRED_IF="AUTH_MODE == 'SERVICEACCOUNT'" />
 		<IMPORT NAME="google-http-client-appengine-1.38.0.jar" MODULE="google-http-client-appengine-1.38.0.jar" MVN="mvn:com.google.http-client/google-http-client-appengine/1.38.0" REQUIRED_IF="AUTH_MODE == 'SERVICEACCOUNT'" />
 		<IMPORT NAME="api-common-1.6.0.jar" MODULE="api-common-1.6.0.jar" MVN="mvn:com.google.api/api-common/1.6.0" REQUIRED_IF="AUTH_MODE == 'SERVICEACCOUNT'" />
+		<IMPORT NAME="opencensus-api-0.24.0" MODULE="opencensus-api-0.24.0.jar" MVN="mvn:io.opencensus/opencensus-api/0.24.0" REQUIRED="true" />
+		<IMPORT NAME="opencensus-contrib-http-util-0.24.0" MODULE="opencensus-contrib-http-util-0.24.0.jar" MVN="mvn:io.opencensus/opencensus-contrib-http-util/0.24.0" REQUIRED="true" />
+		<IMPORT NAME="grpc-context-1.22.1" MODULE="grpc-context-1.22.1.jar" MVN="mvn:io.grpc/grpc-context/1.22.1" REQUIRED="true" />
      </IMPORTS>
    </CODEGENERATION>
    <RETURNS>
