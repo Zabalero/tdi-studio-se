@@ -4298,10 +4298,10 @@ public class Node extends Element implements IGraphicalNode {
         boolean eltComponent = isELTComponent();
         IComponent _component = node.getComponent();
         boolean isEBCDIC = _component.getName().contains("EBCDIC");
-        if (_component.isSupportDbType() || _component.getOriginalFamilyName().startsWith(DATABASE_LABEL)
+        if (_component != null && _component.isSupportDbType() || _component.getOriginalFamilyName().startsWith(DATABASE_LABEL)
                 || eltComponent || isEBCDIC) {
             for (IElementParameter currentParam : getElementParameters()) {
-                if (currentParam.getFieldType().equals(EParameterFieldType.MAPPING_TYPE)) {
+                if (EParameterFieldType.MAPPING_TYPE.equals(currentParam.getFieldType())) {
                     hasMappingType = true;
                     break;
                 }
