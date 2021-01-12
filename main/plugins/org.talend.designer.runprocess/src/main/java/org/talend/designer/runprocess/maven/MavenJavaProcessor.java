@@ -60,6 +60,7 @@ import org.talend.designer.maven.tools.AggregatorPomsHelper;
 import org.talend.designer.maven.tools.BuildCacheManager;
 import org.talend.designer.maven.tools.creator.CreateMavenJobPom;
 import org.talend.designer.maven.utils.MavenProjectUtils;
+import org.talend.designer.maven.utils.PomIdsHelper;
 import org.talend.designer.maven.utils.PomUtil;
 import org.talend.designer.runprocess.ProcessorException;
 import org.talend.designer.runprocess.ProcessorUtilities;
@@ -220,14 +221,15 @@ public class MavenJavaProcessor extends JavaProcessor {
                 }
                 
                 String childJobName = null;
+                String childJarName = null;
                 if (jobInfo.getProcessItem() != null && jobInfo.getProcessItem().getProperty() !=null 
                 		&& "OSGI".equals(jobInfo.getProcessItem().getProperty().getAdditionalProperties().get(TalendProcessArgumentConstant.ARG_BUILD_TYPE))) {
                 	childJobName = jobInfo.getJobName() + "-bundle";
+                	childJarName = childJobName + "-" + PomIdsHelper.getJobVersion(property);
                 } else {
                 	childJobName = jobInfo.getJobName();
+                	childJarName = JavaResourcesHelper.getJobJarName(childJobName, PomIdsHelper.getJobVersion(property));
                 }
-                
-                String childJarName = JavaResourcesHelper.getJobJarName(childJobName, jobInfo.getJobVersion());
                 
                 if (!childJarName.equals(jarName)) {
                     exportJar += classPathSeparator + libPrefixPath + childJarName + FileExtensions.JAR_FILE_SUFFIX;
