@@ -225,7 +225,7 @@ public class MavenJavaProcessor extends JavaProcessor {
                 if (jobInfo.getProcessItem() != null && jobInfo.getProcessItem().getProperty() !=null 
                 		&& "OSGI".equals(jobInfo.getProcessItem().getProperty().getAdditionalProperties().get(TalendProcessArgumentConstant.ARG_BUILD_TYPE))) {
                 	childJobName = jobInfo.getJobName() + "-bundle";
-                	childJarName = childJobName + "-" + PomIdsHelper.getJobVersion(property);
+                	childJarName = childJobName + "-" + PomIdsHelper.getJobVersion(jobInfo.getProcessItem().getProperty());
                 } else {
                 	childJobName = jobInfo.getJobName();
                 	childJarName = JavaResourcesHelper.getJobJarName(childJobName, PomIdsHelper.getJobVersion(property));
