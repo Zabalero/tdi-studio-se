@@ -228,7 +228,7 @@ public class MavenJavaProcessor extends JavaProcessor {
                 	childJarName = childJobName + "-" + PomIdsHelper.getJobVersion(jobInfo.getProcessItem().getProperty());
                 } else {
                 	childJobName = jobInfo.getJobName();
-                	childJarName = JavaResourcesHelper.getJobJarName(childJobName, PomIdsHelper.getJobVersion(property));
+                	childJarName = JavaResourcesHelper.getJobJarName(childJobName, jobInfo.getJobVersion());
                 }
                 
                 if (!childJarName.equals(jarName)) {
