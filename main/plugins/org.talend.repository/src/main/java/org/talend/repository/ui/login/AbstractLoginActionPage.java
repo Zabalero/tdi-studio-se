@@ -358,6 +358,14 @@ public abstract class AbstractLoginActionPage extends AbstractActionPage {
             return hasError;
         }
 
+        public boolean hasWarn() {
+            boolean hasWarn = false;
+            if (this.warnMessage != null && !this.warnMessage.isEmpty()) {
+                hasWarn = true;
+            }
+            return hasWarn;
+        }
+
         public Throwable getAuthException() {
             return authException;
         }

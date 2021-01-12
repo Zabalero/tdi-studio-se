@@ -424,6 +424,8 @@ public class LoginProjectPage extends AbstractLoginActionPage {
                                         return;
                                     }
 //                                    backgroundTaskPanel.setVisible(show.get());
+                                    getErrorManager()
+                                            .setChecking4UpdateMsg(Messages.getString("LoginProjectPage.progress.checkUpdate"));
                                     backgroundTaskIcon.setVisible(show.get());
                                     backgroundTaskIcon
                                             .setToolTipText(Messages.getString("LoginProjectPage.progress.checkUpdate"));
@@ -445,6 +447,7 @@ public class LoginProjectPage extends AbstractLoginActionPage {
                             if (isDisposed()) {
                                 return;
                             }
+                            getErrorManager().clearChecking4UpdateMsg();
                             backgroundTaskIcon.setVisible(false);
                             backgroundTaskIcon.setToolTipText(null);
                             backgroundTaskPanel.setToolTipText(null);
@@ -2604,15 +2607,33 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
         protected String createNewProjectErrorMsg;
 
+        protected String checking4UpdateMsg;
+
         @Override
         public void clearAllMessages() {
             createNewProjectErrorMsg = null;
+            checking4UpdateMsg = null;
             super.clearAllMessages();
         }
 
         public void setCreateNewProjectError(String errMsg) {
             createNewProjectErrorMsg = errMsg;
             loginDialog.setErrorMessage(errMsg, null);
+        }
+
+        public void setChecking4UpdateMsg(String msg) {
+            if (StringUtils.equals(checking4UpdateMsg, msg)) {
+                return;
+            }
+            checking4UpdateMsg = msg;
+            showErrorMessage();
+        }
+
+        public void clearChecking4UpdateMsg() {
+            checking4UpdateMsg = null;
+            if (!showErrorMessage()) {
+                loginDialog.clearErrorMessage();
+            }
         }
 
         public String getCreateNewProjectError() {
@@ -2628,15 +2649,21 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
         @Override
         public boolean showErrorMessage() {
-            boolean hasMsg = super.showErrorMessage();
-            if (hasMsg) {
-                return true;
-            }
             if (createNewProjectErrorMsg != null && !createNewProjectErrorMsg.isEmpty()) {
                 loginDialog.setErrorMessage(createNewProjectErrorMsg, null);
                 return true;
             }
-            return false;
+            if (super.hasError()) {
+                return super.showErrorMessage();
+            }
+            if (super.hasWarn()) {
+                return super.showErrorMessage();
+            }
+            if (StringUtils.isNotBlank(checking4UpdateMsg)) {
+                loginDialog.setWarnMessage(checking4UpdateMsg, null);
+                return true;
+            }
+            return super.showErrorMessage();
         }
 
         @Override
