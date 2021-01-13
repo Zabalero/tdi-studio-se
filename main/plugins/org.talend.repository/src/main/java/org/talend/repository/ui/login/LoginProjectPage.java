@@ -31,10 +31,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
 import org.eclipse.core.runtime.Platform;
 import org.eclipse.core.runtime.Status;
-import org.eclipse.core.runtime.jobs.IJobChangeEvent;
-import org.eclipse.core.runtime.jobs.IJobChangeListener;
 import org.eclipse.core.runtime.jobs.Job;
-import org.eclipse.core.runtime.jobs.JobChangeAdapter;
 import org.eclipse.jface.dialogs.IDialogConstants;
 import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.viewers.ArrayContentProvider;
@@ -49,8 +46,6 @@ import org.eclipse.jface.viewers.ViewerSorter;
 import org.eclipse.jface.window.Window;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.custom.BusyIndicator;
-import org.eclipse.swt.events.DisposeEvent;
-import org.eclipse.swt.events.DisposeListener;
 import org.eclipse.swt.events.ModifyEvent;
 import org.eclipse.swt.events.ModifyListener;
 import org.eclipse.swt.events.PaintEvent;
@@ -198,8 +193,6 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
     protected Project currentProjectSettings;
 
-    protected Job backgroundGUIUpdate;
-
     protected Job backgroundSandboxChecker;
 
     protected Job backgroundUpdateChecker;
@@ -210,7 +203,7 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
     protected Job backgroundLoadUIJob;
 
-    private IJobChangeListener guiUpdateJobChangeListener;
+    protected Job backgroundRefreshBranchJob;
 
     private String selectedProjectBeforeRefresh;
 
@@ -304,6 +297,9 @@ public class LoginProjectPage extends AbstractLoginActionPage {
 
             @Override
             protected IStatus run(IProgressMonitor monitor) {
+                Display.getDefault().syncExec(() -> errorManager.clearAllMessages());
+                cancelAllBackgroundJobs(this);
+
                 // reset flag to connect again
                 errorManager.setAuthException(null);
                 errorManager.setHasAuthException(false);
@@ -346,6 +342,88 @@ public class LoginProjectPage extends AbstractLoginActionPage {
                     });
                 }
                 return Status.OK_STATUS;
+            }
+
+        };
+    }
+
+    private void scheduleRefreshBranchJob() {
+        if (this.backgroundRefreshBranchJob != null) {
+            this.backgroundRefreshBranchJob.cancel();
+            Optional.ofNullable(backgroundRefreshBranchJob.getThread()).ifPresent(t -> t.interrupt());
+        }
+        this.backgroundRefreshBranchJob = createRefreshBranchJob();
+        this.backgroundRefreshBranchJob.schedule();
+    }
+
+    private Job createRefreshBranchJob() {
+        return new Job("Refresh branch") {
+
+            @Override
+            protected IStatus run(IProgressMonitor monitor) {
+                final List<String> projectBranches = new ArrayList<String>();
+                try {
+                    Boolean forceRefreshBranch = null;
+                    String projTechLabel = Optional.ofNullable(currentProjectSettings).map(p -> p.getTechnicalLabel())
+                            .orElse(null);
+                    if (StringUtils.isNotBlank(projTechLabel)) {
+                        forceRefreshBranch = forceRefreshProjectBranchMap.get(projTechLabel);
+                    }
+                    if (forceRefreshBranch == null) {
+                        forceRefreshBranch = false;
+                    }
+                    if (monitor.isCanceled() || Thread.currentThread().isInterrupted()) {
+                        return Status.CANCEL_STATUS;
+                    }
+                    projectBranches.addAll(loginHelper.getProjectBranches(currentProjectSettings, !forceRefreshBranch));
+                } catch (JSONException e) {
+                    ExceptionHandler.process(e);
+                }
+                if (monitor.isCanceled() || Thread.currentThread().isInterrupted()) {
+                    return Status.CANCEL_STATUS;
+                }
+                Display.getDefault().syncExec(() -> {
+                    if (branchesViewer == null || branchesViewer.getControl() == null
+                            || branchesViewer.getControl().isDisposed()) {
+                        return;
+                    }
+                    if (monitor.isCanceled() || Thread.currentThread().isInterrupted()) {
+                        return;
+                    }
+                    branchesViewer.setInput(projectBranches);
+                    String storage = null;
+                    try {
+                        storage = getStorage(currentProjectSettings);
+                    } catch (Exception e) {
+                        ExceptionHandler.process(e);
+                    }
+                    if (monitor.isCanceled() || Thread.currentThread().isInterrupted()) {
+                        return;
+                    }
+                    if ("svn".equals(storage) && projectBranches.size() != 0) {
+                        branchesViewer.setSelection(new StructuredSelection(
+                                new Object[] { projectBranches.contains("trunk") ? "trunk" : projectBranches.get(0) }));
+                    } else if ("git".equals(storage) && projectBranches.size() != 0) {
+                        String defaultBranch = null;
+                        if (projectBranches.contains(SVNConstant.NAME_MAIN)) {
+                            defaultBranch = SVNConstant.NAME_MAIN;
+                        } else if (projectBranches.contains(SVNConstant.NAME_MASTER)) {
+                            defaultBranch = SVNConstant.NAME_MASTER;
+                        } else {
+                            defaultBranch = projectBranches.get(0);
+                        }
+                        if (StringUtils.isNotBlank(defaultBranch)) {
+                            branchesViewer.setSelection(new StructuredSelection(new Object[] { defaultBranch }));
+                        }
+                    }
+                    // svnBranchCombo.getCombo().setFont(originalFont);
+                    branchesViewer.getCombo().setEnabled(projectViewer.getControl().isEnabled());
+                });
+                if (monitor.isCanceled()) {
+                    return org.eclipse.core.runtime.Status.CANCEL_STATUS;
+                } else {
+                    return org.eclipse.core.runtime.Status.OK_STATUS;
+                }
             }
 
         };
@@ -1445,27 +1523,32 @@ public class LoginProjectPage extends AbstractLoginActionPage {
         });
     }
 
-    private void cancelAllBackgroundJobs() {
+    private void cancelAllBackgroundJobs(Job currentJob) {
 //        if (backgroundLoadUIJob != null) {
 //            backgroundLoadUIJob.cancel();
 //            backgroundLoadUIJob = null;
 //        }
-        if (backgroundSandboxChecker != null) {
+        if (backgroundSandboxChecker != null && backgroundSandboxChecker != currentJob) {
             backgroundSandboxChecker.cancel();
             Optional.ofNullable(backgroundSandboxChecker.getThread()).ifPresent(t -> t.interrupt());
             backgroundSandboxChecker = null;
         }
-        if (backgroundUpdateChecker != null) {
+        if (backgroundUpdateChecker != null && backgroundUpdateChecker != currentJob) {
             backgroundUpdateChecker.cancel();
             Optional.ofNullable(backgroundUpdateChecker.getThread()).ifPresent(t -> t.interrupt());
             backgroundUpdateChecker = null;
         }
-        if (backgroundRetrieveProjectsJob != null) {
+        if (backgroundRetrieveProjectsJob != null && backgroundRetrieveProjectsJob != currentJob) {
             backgroundRetrieveProjectsJob.cancel();
             Optional.ofNullable(backgroundRetrieveProjectsJob.getThread()).ifPresent(t -> t.interrupt());
             backgroundRetrieveProjectsJob = null;
         }
-        if (backgroundRefreshJob != null) {
+        if (backgroundRefreshBranchJob != null && backgroundRefreshBranchJob != currentJob) {
+            backgroundRefreshBranchJob.cancel();
+            Optional.ofNullable(backgroundRefreshBranchJob.getThread()).ifPresent(t -> t.interrupt());
+            backgroundRefreshBranchJob = null;
+        }
+        if (backgroundRefreshJob != null && backgroundRefreshJob != currentJob) {
             backgroundRefreshJob.cancel();
             Optional.ofNullable(backgroundRefreshJob.getThread()).ifPresent(t -> t.interrupt());
             backgroundRefreshJob = null;
@@ -2190,97 +2273,7 @@ public class LoginProjectPage extends AbstractLoginActionPage {
                 branchesViewer.setInput(projectBranches);
             }
             branchesViewer.getCombo().setEnabled(false);
-            if (backgroundGUIUpdate == null/* || (backgroundGUIUpdate.getState() == Job.NONE) */) {
-                backgroundGUIUpdate = new Job("List Branches") { //$NON-NLS-1$
-
-                    @Override
-                    protected IStatus run(IProgressMonitor monitor) {
-                        projectBranches.clear();
-                        try {
-                            Boolean forceRefreshBranch = null;
-                            String projTechLabel = Optional.ofNullable(currentProjectSettings).map(p -> p.getTechnicalLabel())
-                                    .orElse(null);
-                            if (StringUtils.isNotBlank(projTechLabel)) {
-                                forceRefreshBranch = forceRefreshProjectBranchMap.get(projTechLabel);
-                            }
-                            if (forceRefreshBranch == null) {
-                                forceRefreshBranch = false;
-                            }
-                            projectBranches.addAll(loginHelper.getProjectBranches(currentProjectSettings, !forceRefreshBranch));
-                        } catch (JSONException e) {
-                            // TODO Auto-generated catch block
-                            ExceptionHandler.process(e);
-                        }
-                        if (monitor.isCanceled()) {
-                            return org.eclipse.core.runtime.Status.CANCEL_STATUS;
-                        } else {
-                            return org.eclipse.core.runtime.Status.OK_STATUS;
-                        }
-                    }
-
-                };
-                guiUpdateJobChangeListener = new JobChangeAdapter() {
-
-                    @Override
-                    public void done(IJobChangeEvent event) {
-                        if (event == null || org.eclipse.core.runtime.Status.CANCEL_STATUS.equals(event.getResult())) {
-                            return;
-                        }
-                        if (event.getJob().equals(backgroundGUIUpdate)) {
-                            if (branchesViewer != null && !branchesViewer.getCombo().isDisposed()) {
-                                branchesViewer.getCombo().getDisplay().syncExec(new Runnable() {
-
-                                    @Override
-                                    public void run() {
-                                        if (branchesViewer == null || branchesViewer.getControl() == null
-                                                || branchesViewer.getControl().isDisposed()) {
-                                            return;
-                                        }
-                                        branchesViewer.setInput(projectBranches);
-                                        String storage = null;
-                                        try {
-                                            storage = getStorage(currentProjectSettings);
-                                        } catch (Exception e) {
-                                            ExceptionHandler.process(e);
-                                        }
-                                        //branchesViewer.setSelection(new StructuredSelection(new Object[] { projectBranches.get(0) })); //$NON-NLS-1$
-                                        if ("svn".equals(storage) && projectBranches.size() != 0) {
-                                            branchesViewer.setSelection(new StructuredSelection(new Object[] { projectBranches
-                                                    .contains("trunk") ? "trunk" : projectBranches.get(0) }));
-                                        } else if ("git".equals(storage) && projectBranches.size() != 0) {
-                                            String defaultBranch = null;
-                                            if (projectBranches.contains(SVNConstant.NAME_MAIN)) {
-                                                defaultBranch = SVNConstant.NAME_MAIN;
-                                            } else if (projectBranches.contains(SVNConstant.NAME_MASTER)) {
-                                                defaultBranch = SVNConstant.NAME_MASTER;
-                                            } else {
-                                                defaultBranch = projectBranches.get(0);
-                                            }
-                                            if (StringUtils.isNotBlank(defaultBranch)) {
-                                                branchesViewer
-                                                        .setSelection(new StructuredSelection(new Object[] { defaultBranch }));
-                                            }
-                                        }
-                                        // svnBranchCombo.getCombo().setFont(originalFont);
-                                        branchesViewer.getCombo().setEnabled(projectViewer.getControl().isEnabled());
-                                    }
-                                });
-                            }
-                        }
-                    }
-                };
-                Job.getJobManager().addJobChangeListener(guiUpdateJobChangeListener);
-                branchesViewer.getCombo().addDisposeListener(new DisposeListener() {
-
-                    @Override
-                    public void widgetDisposed(DisposeEvent e) {
-                        backgroundGUIUpdate = null;
-                        Job.getJobManager().removeJobChangeListener(guiUpdateJobChangeListener);
-                    }
-                });
-            }
-            backgroundGUIUpdate.cancel();
-            backgroundGUIUpdate.schedule();
+            scheduleRefreshBranchJob();
         }
     }
 
@@ -2457,7 +2450,7 @@ public class LoginProjectPage extends AbstractLoginActionPage {
                 if (monitor.isCanceled() || isDisposed()) {
                     return;
                 }
-                cancelAllBackgroundJobs();
+                cancelAllBackgroundJobs(null);
                 resetProjectOperationSelection(false);
                 if (monitor.isCanceled() || isDisposed()) {
                     return;
@@ -2476,7 +2469,7 @@ public class LoginProjectPage extends AbstractLoginActionPage {
             } else {
                 loginHelper.setCurrentSelectedConnBean(connection);
             }
-            cancelAllBackgroundJobs();
+            cancelAllBackgroundJobs(null);
             if (monitor.isCanceled() || isDisposed()) {
                 return;
             }
