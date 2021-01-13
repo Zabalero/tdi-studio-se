@@ -1472,7 +1472,9 @@ public class JavaProcessor extends AbstractJavaProcessor implements IJavaBreakpo
                 }
             });
             // add codesjars of main job
-            codesJarClassPaths.addAll(getCodesJarClassPaths(getProperty().getItem()));
+            if (getProperty() != null) {
+                codesJarClassPaths.addAll(getCodesJarClassPaths(getProperty().getItem()));
+            }
 
             codesJarClassPaths.forEach(s -> basePath.append(s).append(classPathSeparator));
 
