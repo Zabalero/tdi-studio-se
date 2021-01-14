@@ -314,7 +314,7 @@ public class ExcelTool {
     public void addCellValue(String stringValue) {
         addCell();
         String value = isTruncateExceedingCharacters && stringValue != null && stringValue.length() > CELL_CHARACTERS_LIMIT
-                ? stringValue.substring(CELL_CHARACTERS_LIMIT)
+                ? stringValue.substring(0, CELL_CHARACTERS_LIMIT)
                         : stringValue;
         curCell.setCellValue(value);
         curCell.setCellStyle(getNormalCellStyle());
