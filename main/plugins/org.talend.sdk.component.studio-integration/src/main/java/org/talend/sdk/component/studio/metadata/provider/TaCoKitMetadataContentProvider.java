@@ -416,7 +416,7 @@ public class TaCoKitMetadataContentProvider extends AbstractMetadataContentProvi
                     if (factory.getStatus(oFolder) != ERepositoryStatus.DELETED) {
                         TaCoKitFolderRepositoryNode folderNode = new TaCoKitFolderRepositoryNode(oFolder,
                                 (RepositoryNode) parentNode, parentNode, folderName, configTypeNode);
-                        if (typeFolders.contains(folderName)) {
+                        if (!typeFolders.contains(folderName)) {
                             // ignore type folders, since they store sub types
                             parentNode.getChildren().add(folderNode);
                         }
