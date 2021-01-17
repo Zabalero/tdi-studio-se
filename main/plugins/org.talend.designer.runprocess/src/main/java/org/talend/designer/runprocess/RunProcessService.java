@@ -535,4 +535,10 @@ public class RunProcessService implements IRunProcessService {
         return delegateService.isExcludeDeletedItems(property);
     }
 
+    @Override
+    public void removeFromCodesJarJavaProjects(CodesJarInfo info) {
+        delegateService.removeFromCodesJarJavaProjects(info);
+
+    }
+
 }

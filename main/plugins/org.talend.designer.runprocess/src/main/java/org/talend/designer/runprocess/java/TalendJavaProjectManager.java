@@ -301,8 +301,7 @@ public class TalendJavaProjectManager {
                 }
                 // only update for main project.
                 if (ProjectManager.getInstance().getCurrentProject().getTechnicalLabel().equals(projectTechName)) {
-                    CodesJarM2CacheManager.updateCodesJarProjectPom(monitor, info,
-                            codeProject.getFile(TalendMavenConstants.POM_FILE_NAME));
+                    CodesJarM2CacheManager.updateCodesJarProjectPom(monitor, info);
                 }
                 codesJarJavaProject = new TalendProcessJavaProject(javaProject);
                 talendCodesJarJavaProjects.put(codeProjectId, codesJarJavaProject);

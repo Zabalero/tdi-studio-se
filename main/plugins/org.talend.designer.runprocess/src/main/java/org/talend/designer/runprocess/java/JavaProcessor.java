@@ -1537,8 +1537,9 @@ public class JavaProcessor extends AbstractJavaProcessor implements IJavaBreakpo
                 CodesJarInfo info = CodesJarResourceCache.getCodesJarById(r.getId());
                 Property property = info.getProperty();
                 String projectTechName = info.getProjectTechName();
-                if (info.isInCurrentMainProject()) {
-                    ITalendProcessJavaProject codesJarProject = TalendJavaProjectManager.getTalendCodesJarJavaProject(info);
+                ITalendProcessJavaProject codesJarProject = TalendJavaProjectManager.getExistingTalendCodesJarProject(info);
+                if (info.isInCurrentMainProject() && codesJarProject != null) {
+                    // TODO or no need to use project classpath at all, just use m2 path for all?
                     IPath codesJarOutputPath = codesJarProject.getOutputFolder().getLocation();
                     classPaths.add(getClassPath(codesJarOutputPath));
                 } else {

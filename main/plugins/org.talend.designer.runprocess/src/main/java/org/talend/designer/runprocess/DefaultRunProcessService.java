@@ -845,7 +845,7 @@ public class DefaultRunProcessService implements IRunProcessService {
             if (ProcessUtils.isRequiredBeans(null)) {
                 AggregatorPomsHelper.buildAndInstallCodesProject(monitor, ERepositoryObjectType.BEANS);
             }
-            CodesJarM2CacheManager.updateCodesJarProject(monitor, false);
+            CodesJarM2CacheManager.updateCodesJarProject(monitor);
         } catch (Exception e) {
             ExceptionHandler.process(e);
         }
@@ -885,12 +885,12 @@ public class DefaultRunProcessService implements IRunProcessService {
 
             CodesJarM2CacheManager.updateCodesJarProject(monitor);
             for (CodesJarInfo info : CodesJarResourceCache.getAllCodesJars()) {
-                if (!info.isInCurrentMainProject()) {
-                    ITalendProcessJavaProject refCodesJarProject = getExistingTalendCodesJarProject(info);
-                    if (refCodesJarProject != null) {
-                        refCodesJarProject.getProject().delete(false, true, monitor);
-                        TalendJavaProjectManager.removeFromCodesJarJavaProjects(info);
-                    }
+                // if (!info.isInCurrentMainProject()) {
+                // }
+                ITalendProcessJavaProject refCodesJarProject = getExistingTalendCodesJarProject(info);
+                if (refCodesJarProject != null) {
+                    refCodesJarProject.getProject().delete(false, true, monitor);
+                    TalendJavaProjectManager.removeFromCodesJarJavaProjects(info);
                 }
             }
         } catch (Exception e) {
@@ -959,6 +959,11 @@ public class DefaultRunProcessService implements IRunProcessService {
             codeProject.getProject().delete(false, true, monitor);
             TalendJavaProjectManager.removeFromCodeJavaProjects(codeType, projectTechName);
         }
+    }
+
+    @Override
+    public void removeFromCodesJarJavaProjects(CodesJarInfo info) {
+        TalendJavaProjectManager.removeFromCodesJarJavaProjects(info);
     }
 
     @Override
