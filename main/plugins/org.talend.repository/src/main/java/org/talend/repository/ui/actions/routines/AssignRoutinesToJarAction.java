@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.apache.commons.lang3.StringUtils;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.IStructuredSelection;
@@ -27,6 +28,7 @@ import org.talend.commons.runtime.model.repository.ERepositoryStatus;
 import org.talend.commons.ui.runtime.image.ECoreImage;
 import org.talend.commons.ui.runtime.image.ImageProvider;
 import org.talend.commons.ui.runtime.image.OverlayImageProvider;
+import org.talend.core.model.properties.ByteArray;
 import org.talend.core.model.properties.Item;
 import org.talend.core.model.properties.RoutineItem;
 import org.talend.core.model.properties.RoutinesJarItem;
@@ -34,6 +36,7 @@ import org.talend.core.model.relationship.RelationshipItemBuilder;
 import org.talend.core.model.repository.ERepositoryObjectType;
 import org.talend.core.model.routines.RoutinesUtil;
 import org.talend.core.repository.model.ProxyRepositoryFactory;
+import org.talend.designer.maven.utils.CodesJarMavenUtil;
 import org.talend.repository.ProjectManager;
 import org.talend.repository.model.IProxyRepositoryFactory;
 import org.talend.repository.model.RepositoryNode;
@@ -96,8 +99,21 @@ public class AssignRoutinesToJarAction extends AbstractRoutineAction {
                 RoutinesUtil.setInnerCodes(sourceItem.getProperty(), ERepositoryObjectType.ROUTINESJAR);
                 RoutinesJarItem routinesJarItem = (RoutinesJarItem) targetRoutinesJarNode.getObject().getProperty().getItem();
                 routinesJarItem.getRoutinesJarType().getImports().addAll(backupImports);
+
+
                 try {
-                    ProxyRepositoryFactory.getInstance().copy(sourceItem, targetPath, sourceItem.getProperty().getLabel());
+                    RoutineItem newItem = (RoutineItem) ProxyRepositoryFactory.getInstance().copy(sourceItem, targetPath,
+                            sourceItem.getProperty().getLabel());
+
+                    String gavPackage = StringUtils.replace(CodesJarMavenUtil.getGAVPackageForCodesJar(routinesJarItem), "/",
+                            ".");
+                    gavPackage = "package " + gavPackage + ";";
+                    ByteArray contents = sourceItem.getContent();
+                    String newInnerContent = StringUtils.replaceOnce(new String(contents.getInnerContent()), "package routines;",
+                            gavPackage);
+                    newItem.getContent().setInnerContent(newInnerContent.getBytes());
+                    ProxyRepositoryFactory.getInstance().save(newItem);
+
                     ProxyRepositoryFactory.getInstance().save(routinesJarItem);
                     RelationshipItemBuilder.getInstance().addOrUpdateItem(routinesJarItem);
 
